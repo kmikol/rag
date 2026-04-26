@@ -1,4 +1,5 @@
 import json
+from typing import cast
 from urllib import request
 
 from embedding_service.testing.mocks import make_fake_embedding, make_test_client
@@ -85,7 +86,8 @@ def test_ollama_backend_embed_and_batch(monkeypatch) -> None:
     def fake_urlopen(req: request.Request, timeout: int):
         assert req.full_url == "http://ollama:11434/api/embed"
         assert timeout == 30
-        payload = json.loads(req.data.decode("utf-8"))
+        assert isinstance(req.data, bytes)
+        payload = json.loads(cast(bytes, req.data).decode("utf-8"))
         assert payload["model"] == "embeddinggemma"
         assert payload["keep_alive"] == "5m"
 
