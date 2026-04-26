@@ -90,11 +90,15 @@ class OllamaEmbeddingBackend:
             detail = exc.read().decode("utf-8")
             raise HTTPException(status_code=502, detail=f"Ollama HTTP error: {detail}") from exc
         except error.URLError as exc:
-            raise HTTPException(status_code=502, detail=f"Ollama unavailable: {exc.reason}") from exc
+            raise HTTPException(
+                status_code=502, detail=f"Ollama unavailable: {exc.reason}"
+            ) from exc
 
         embeddings = body.get("embeddings")
         if not isinstance(embeddings, list):
-            raise HTTPException(status_code=502, detail="Invalid Ollama response: missing embeddings")
+            raise HTTPException(
+                status_code=502, detail="Invalid Ollama response: missing embeddings"
+            )
 
         return embeddings
 
@@ -105,7 +109,9 @@ class OllamaEmbeddingBackend:
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         embeddings = self._request_embeddings(texts)
         if len(embeddings) != len(texts):
-            raise HTTPException(status_code=502, detail="Invalid Ollama response: wrong embedding count")
+            raise HTTPException(
+                status_code=502, detail="Invalid Ollama response: wrong embedding count"
+            )
         return embeddings
 
 
