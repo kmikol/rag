@@ -1,0 +1,4 @@
+# Unified local dependencies entrypoint.
+# Runtime and development dependencies are declared in pyproject.toml.
+
+-e ".[dev]"

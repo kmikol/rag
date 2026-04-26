@@ -1,0 +1,67 @@
+services:
+  api-service:
+    build:
+      context: .
+      dockerfile: api_service/Dockerfile
+    env_file:
+      - config/env/api-service.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      embedding-service:
+        condition: service_healthy
+
+  embedding-service:
+    build:
+      context: .
+      dockerfile: embedding_service/Dockerfile
+    env_file:
+      - config/env/embedding-service.env
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    env_file:
+      - config/env/ingestion-worker.env
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      embedding-service:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    env_file:
+      - config/env/postgres.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "6333:6333"

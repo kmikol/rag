@@ -1,14 +1,38 @@
 # Setup
 
-Implementation has not started yet. The setup path will be filled in as services are added.
+The project is intended to be developed from inside the devcontainer.
 
-## Documentation Setup
+## Devcontainer Setup
 
-Install the documentation dependencies:
+Open the repository in VS Code and choose **Reopen in Container**. The devcontainer uses Python 3.11, installs dependencies from `requirements.txt`, and enables Docker access for Compose-based integration tests.
+
+After the container starts, verify the toolchain:
 
 ```bash
-python -m pip install -r docs/docs-requirements.txt
+make lint
+make typecheck
+make test.unit
 ```
+
+Install pre-commit hooks:
+
+```bash
+make pre-commit.install
+```
+
+The hooks fail on lint, formatting, or type-checking issues. They do not auto-fix changes during commit.
+
+## Environment Files
+
+Configuration is environment-variable driven.
+
+- `config/env/*.env` contains safe service-specific local development defaults and is committed.
+- `config/env/*.env.example` documents the same keys for new environments.
+- `.env.example` documents optional root-level Compose interpolation values.
+
+Do not put personal secrets in committed env defaults. Override values in your shell, Compose environment, ignored `.env.local`, or deployment-specific env files.
+
+## Documentation Setup
 
 Serve the documentation locally:
 
