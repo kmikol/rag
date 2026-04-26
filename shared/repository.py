@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Engine, Select, create_engine, select, update
+from sqlalchemy import Engine, Row, Select, create_engine, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection
 
 from shared.db import DOCUMENT_STATES, chunks, document_versions, documents, ingestion_jobs
@@ -127,8 +128,9 @@ class MetadataRepository:
         values: dict[str, Any] = {
             "status": status,
             "updated_at": now,
-            "error_message": error_message,
         }
+        if error_message is not None:
+            values["error_message"] = error_message
         if processed_items is not None:
             values["processed_items"] = processed_items
         if status in {"active", "failed", "deleted"}:
@@ -152,6 +154,9 @@ class MetadataRepository:
 
     def get_or_create_document(self, source_path: str) -> dict[str, Any]:
         """Return a logical document for a source path, creating it if needed."""
+        if self.connection.dialect.name == "postgresql":
+            return self._get_or_create_document_postgresql(source_path)
+
         existing = (
             self.connection.execute(select(documents).where(documents.c.source_path == source_path))
             .mappings()
@@ -176,6 +181,37 @@ class MetadataRepository:
             .mappings()
             .one()
         )
+
+    def _get_or_create_document_postgresql(self, source_path: str) -> dict[str, Any]:
+        """Create a document atomically on PostgreSQL to avoid worker races."""
+        now = utc_now()
+        row = {
+            "id": new_id(),
+            "source_path": source_path,
+            "original_filename": Path(source_path).name,
+            "state": "pending",
+            "created_at": now,
+            "updated_at": now,
+        }
+        inserted = (
+            self.connection.execute(
+                postgresql_insert(documents)
+                .values(row)
+                .on_conflict_do_nothing(index_elements=[documents.c.source_path])
+                .returning(documents)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if inserted is not None:
+            return dict(inserted)
+
+        existing = (
+            self.connection.execute(select(documents).where(documents.c.source_path == source_path))
+            .mappings()
+            .one()
+        )
+        return dict(existing)
 
     def create_document_version(
         self,
@@ -286,7 +322,28 @@ class MetadataRepository:
 
     def list_documents(self) -> list[dict[str, Any]]:
         """List logical documents with active-version metadata for API responses."""
+        active_version = document_versions.alias("active_version")
         rows = self.connection.execute(
-            select(documents).order_by(documents.c.created_at)
-        ).mappings()
-        return [self.get_document_with_active_version(row["id"]) for row in rows]
+            select(documents, active_version)
+            .outerjoin(
+                active_version,
+                active_version.c.id == documents.c.active_document_version_id,
+            )
+            .order_by(documents.c.created_at)
+        )
+        return [self._build_document_with_active_version(row, active_version) for row in rows]
+
+    def _build_document_with_active_version(
+        self,
+        row: Row[Any],
+        active_version: Any,
+    ) -> dict[str, Any]:
+        """Build API-shaped document data from a joined document/version row."""
+        row_mapping = row._mapping
+        document = {column.name: row_mapping[column] for column in documents.c}
+
+        version = None
+        if row_mapping[active_version.c.id] is not None:
+            version = {column.name: row_mapping[column] for column in active_version.c}
+
+        return {"document": document, "active_version": version}

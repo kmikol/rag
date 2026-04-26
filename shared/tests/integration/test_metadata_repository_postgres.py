@@ -72,3 +72,17 @@ def test_claiming_pending_jobs_does_not_return_running_jobs() -> None:
         assert claimed is not None
         assert claimed["id"] in {first["id"], second["id"]}
         assert claimed["worker_id"] == "worker-2"
+
+
+def test_get_or_create_document_uses_existing_source_path() -> None:
+    upgrade_database()
+    engine = create_metadata_engine(os.environ["POSTGRES_URL"])
+    source_path = f"/watch/{uuid4().hex}.md"
+
+    with engine.begin() as connection:
+        repo = MetadataRepository(connection)
+        first = repo.get_or_create_document(source_path)
+        second = repo.get_or_create_document(source_path)
+
+        assert second["id"] == first["id"]
+        assert second["source_path"] == source_path
