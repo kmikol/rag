@@ -83,11 +83,13 @@ services:
       API_SERVICE_URL: http://api-service:8000
       INGESTION_WORKER_URL: http://ingestion-worker:8000
       EMBEDDING_SERVICE_URL: http://embedding-service:8000
+      POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
     command: >
       pytest
       api_service/tests/integration/
       embedding_service/tests/integration/
       ingestion_worker/tests/integration/
+      shared/tests/integration/
       -v
 
 networks:

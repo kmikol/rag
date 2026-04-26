@@ -1,0 +1,125 @@
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
+
+from shared.db import metadata
+from shared.repository import ChunkRecord, MetadataRepository, validate_state
+
+
+def open_repository() -> tuple[MetadataRepository, Connection]:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    metadata.create_all(engine)
+    connection = engine.connect()
+    return MetadataRepository(connection), connection
+
+
+def test_validate_state_rejects_unknown_state() -> None:
+    try:
+        validate_state("unknown")
+    except ValueError as error:
+        assert "Unsupported state" in str(error)
+    else:
+        raise AssertionError("Expected ValueError for unknown state")
+
+
+def test_create_and_update_ingestion_job() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            job = repo.create_ingestion_job("/watch/example.md")
+
+            assert job["requested_path"] == "/watch/example.md"
+            assert job["status"] == "pending"
+
+            updated = repo.update_ingestion_job(job["id"], "failed", 2, "parse failed")
+
+            assert updated["status"] == "failed"
+            assert updated["processed_items"] == 2
+            assert updated["error_message"] == "parse failed"
+            assert updated["completed_at"] is not None
+    finally:
+        connection.close()
+
+
+def test_claim_next_ingestion_job_marks_job_running() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            repo.create_ingestion_job()
+
+            claimed = repo.claim_next_ingestion_job("worker-1")
+
+            assert claimed is not None
+            assert claimed["status"] == "running"
+            assert claimed["worker_id"] == "worker-1"
+            assert claimed["lease_expires_at"] is not None
+            assert repo.claim_next_ingestion_job("worker-2") is None
+    finally:
+        connection.close()
+
+
+def test_document_version_activation_switches_active_version() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            document = repo.get_or_create_document("/watch/example.md")
+            first_version = repo.create_document_version(document["id"], "a" * 64)
+            second_version = repo.create_document_version(document["id"], "b" * 64)
+
+            repo.mark_document_version_active(first_version["id"])
+            active_document = repo.mark_document_version_active(second_version["id"])
+
+            assert active_document["document"]["active_document_version_id"] == second_version["id"]
+            assert active_document["active_version"]["content_hash"] == "b" * 64
+    finally:
+        connection.close()
+
+
+def test_duplicate_content_hash_is_rejected() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            first_document = repo.get_or_create_document("/watch/one.md")
+            second_document = repo.get_or_create_document("/watch/two.md")
+            repo.create_document_version(first_document["id"], "a" * 64)
+
+            try:
+                repo.create_document_version(second_document["id"], "a" * 64)
+            except IntegrityError:
+                pass
+            else:
+                raise AssertionError("Expected duplicate content hash to be rejected")
+    finally:
+        connection.close()
+
+
+def test_create_chunks_preserves_citation_metadata() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            document = repo.get_or_create_document("/watch/example.md")
+            version = repo.create_document_version(document["id"], "a" * 64)
+
+            chunks = repo.create_chunks(
+                document["id"],
+                version["id"],
+                [
+                    ChunkRecord(
+                        text="Chunk text",
+                        source_path="/watch/example.md",
+                        original_filename="example.md",
+                        heading_path=["Title", "Section"],
+                        section_title="Section",
+                        start_offset=10,
+                        end_offset=20,
+                        token_count=2,
+                    )
+                ],
+            )
+
+            assert chunks[0]["ordinal"] == 0
+            assert chunks[0]["heading_path"] == ["Title", "Section"]
+            assert chunks[0]["section_title"] == "Section"
+            assert chunks[0]["token_count"] == 2
+    finally:
+        connection.close()
