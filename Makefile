@@ -96,6 +96,7 @@ test.integration: ## Run integration tests in Docker
 		api_service/tests/integration/ \
 		embedding_service/tests/integration/ \
 		ingestion_worker/tests/integration/ \
+		shared/tests/integration/ \
 		-v; \
 	EXIT=$$?; \
 	$(TEST_COMPOSE) down -v; \

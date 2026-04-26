@@ -4,6 +4,7 @@ ENV PYTHONPATH=/workspace
 WORKDIR /workspace
 
 COPY pyproject.toml /workspace/pyproject.toml
+COPY alembic.ini /workspace/alembic.ini
 COPY api_service /workspace/api_service
 COPY embedding_service /workspace/embedding_service
 COPY ingestion_worker /workspace/ingestion_worker

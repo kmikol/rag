@@ -86,6 +86,9 @@ make db.downgrade
 
 Roll back one migration.
 
+These commands use `POSTGRES_URL` from the environment. Docker Compose development uses
+the safe local defaults in `config/env/`.
+
 ## Planned Environment Variables
 
 The implementation uses these configuration keys through service-specific files in `config/env/`:
