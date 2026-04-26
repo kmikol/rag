@@ -20,8 +20,11 @@ class AppSettings(BaseSettings):
     ollama_url: str = Field(default="http://localhost:11434", alias="OLLAMA_URL")
     watch_roots: str = Field(default="./watch", alias="WATCH_ROOTS")
     document_store_path: str = Field(default="./documents", alias="DOCUMENT_STORE_PATH")
-    embedding_model_name: str = Field(default="fake-embedding-model", alias="EMBEDDING_MODEL_NAME")
+    embedding_backend: str = Field(default="fake", alias="EMBEDDING_BACKEND")
+    embedding_model_name: str = Field(default="embeddinggemma", alias="EMBEDDING_MODEL_NAME")
     embedding_dimension: int = Field(default=8, alias="EMBEDDING_DIMENSION")
+    ollama_embed_timeout_seconds: int = Field(default=30, alias="OLLAMA_EMBED_TIMEOUT_SECONDS")
+    ollama_keep_alive: str = Field(default="5m", alias="OLLAMA_KEEP_ALIVE")
 
 
 @lru_cache
