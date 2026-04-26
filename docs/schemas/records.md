@@ -2,6 +2,8 @@
 
 Record schemas are not implemented yet.
 
+The skeleton defines shared API convention schemas in `shared.schemas`; persistent records will be added when the database schema is implemented.
+
 The first implementation should define records for:
 
 - `document`

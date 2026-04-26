@@ -1,0 +1,17 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--config", "pyproject.toml"]
+      - id: ruff-format
+        args: ["--check", "--config", "pyproject.toml"]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: python -m mypy api_service embedding_service ingestion_worker shared tests --ignore-missing-imports --no-strict-optional
+        language: system
+        pass_filenames: false
+        types: [python]

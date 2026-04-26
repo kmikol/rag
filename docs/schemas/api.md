@@ -2,6 +2,13 @@
 
 API schemas are not implemented yet.
 
+Shared conventions already exist for:
+
+| Schema | Purpose |
+|--------|---------|
+| `HealthResponse` | Standard service health response: `service`, `status` |
+| `ErrorResponse` | Standard error envelope: `error`, `message`, optional `request_id` |
+
 Minimum planned API surface:
 
 | Service | Endpoint | Purpose |

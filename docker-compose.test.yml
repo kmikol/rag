@@ -1,0 +1,95 @@
+# Test infrastructure for service-level integration checks.
+#
+# Usage:
+#   make test.integration
+#   docker compose -f docker-compose.test.yml down -v
+
+services:
+  postgres:
+    image: postgres:16
+    env_file:
+      - config/env/postgres.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+
+  embedding-service:
+    build:
+      context: .
+      dockerfile: embedding_service/Dockerfile
+    env_file:
+      - config/env/embedding-service.env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-service:
+    build:
+      context: .
+      dockerfile: api_service/Dockerfile
+    env_file:
+      - config/env/api-service.env
+    environment:
+      RAG_API_KEY: test-token
+      OLLAMA_URL: http://ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    env_file:
+      - config/env/ingestion-worker.env
+    environment:
+      RAG_API_KEY: test-token
+      OLLAMA_URL: http://ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  test:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    depends_on:
+      api-service:
+        condition: service_started
+      ingestion-worker:
+        condition: service_started
+      embedding-service:
+        condition: service_healthy
+    environment:
+      API_SERVICE_URL: http://api-service:8000
+      INGESTION_WORKER_URL: http://ingestion-worker:8000
+      EMBEDDING_SERVICE_URL: http://embedding-service:8000
+    command: >
+      pytest
+      api_service/tests/integration/
+      embedding_service/tests/integration/
+      ingestion_worker/tests/integration/
+      -v
+
+networks:
+  default:
+    name: rag-test

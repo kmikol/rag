@@ -10,3 +10,6 @@ site/
 .env
 .env.*
 !.env.example
+!.env_example
+!config/env/*.env
+!config/env/*.env.example

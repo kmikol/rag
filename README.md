@@ -6,19 +6,41 @@ The project is currently in the design/scaffolding phase. The documentation site
 
 ## Documentation
 
-Install documentation dependencies:
+This project is intended to be developed from inside the devcontainer. Open the repository in VS Code and choose **Reopen in Container**. The container installs the development, test, and documentation dependencies from `requirements.txt`.
 
-```bash
-python -m pip install -r docs/docs-requirements.txt
-```
-
-Serve the project page locally:
+Serve the project page locally from inside the devcontainer:
 
 ```bash
 make docs.serve.local
 ```
 
 The local site is served at <http://localhost:8001>.
+
+## Development Checks
+
+Run the standard checks from inside the devcontainer:
+
+```bash
+make lint
+make typecheck
+make test.unit
+make test.integration
+make test.smoke
+```
+
+`make test` runs all of the above.
+
+Install pre-commit hooks from inside the devcontainer:
+
+```bash
+make pre-commit.install
+```
+
+## Environment
+
+Configuration is environment-variable driven. Safe service-specific defaults are committed under `config/env/*.env`, and matching `*.env.example` files document the same keys for new environments.
+
+Do not put personal secrets in the committed env defaults; override values in your shell, Compose environment, ignored `.env.local`, or deployment-specific env files.
 
 ## Current Architecture Direction
 
