@@ -3,3 +3,7 @@
 ## API Reference
 
 ::: ingestion_worker.main
+
+::: ingestion_worker.parsing
+
+::: ingestion_worker.chunking
