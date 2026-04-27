@@ -1,0 +1,18 @@
+[config]
+model = "gemini/gemini-1.5-flash"
+fallback_models = ["gemini/gemini-1.5-flash"]
+
+[pr_reviewer]
+require_tests_review = true
+require_score_review = false
+require_security_review = true
+require_estimate_effort_to_review = true
+num_code_suggestions = 4
+
+[pr_description]
+publish_labels = true
+add_original_user_description = true
+
+[pr_code_suggestions]
+num_code_suggestions = 4
+summarize = true

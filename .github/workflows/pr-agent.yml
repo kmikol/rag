@@ -1,0 +1,32 @@
+name: PR Agent
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr_agent:
+    name: Run PR Agent
+    runs-on: ubuntu-latest
+    if: >
+      github.event.sender.type != 'Bot' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    steps:
+      - name: PR Agent
+        uses: the-pr-agent/pr-agent@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "false"
