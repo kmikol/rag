@@ -11,7 +11,7 @@ class AppSettings(BaseSettings):
 
     rag_api_key: str = Field(default="dev-token", alias="RAG_API_KEY")
     postgres_url: str = Field(
-        default="postgresql://rag:rag@localhost:5432/rag", alias="POSTGRES_URL"
+        default="postgresql+psycopg://rag:rag@localhost:5432/rag", alias="POSTGRES_URL"
     )
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     embedding_service_url: str = Field(

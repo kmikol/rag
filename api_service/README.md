@@ -15,6 +15,9 @@ Implemented in this skeleton:
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/health` | Service health check |
+| `POST` | `/ingest` | Create an ingestion job |
+| `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
+| `GET` | `/documents` | List ingested documents |
 
 Planned:
 
@@ -22,10 +25,11 @@ Planned:
 |--------|------|---------|
 | `POST` | `/chat` | Generate an answer grounded in retrieved chunks |
 | `POST` | `/search` | Return ranked chunks without generation |
-| `POST` | `/ingest` | Create an ingestion job |
-| `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
-| `GET` | `/documents` | List ingested documents |
 | `DELETE` | `/documents/{id}` | Delete a document from the corpus |
+
+The ingestion and document endpoints require `Authorization: Bearer <RAG_API_KEY>`.
+`POST /ingest` accepts an optional `requested_path` JSON field for single-file
+ingestion; omitting it creates a full-scan job.
 
 ## Configuration
 
