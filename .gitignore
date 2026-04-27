@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 site/
+scratchbook/
 .env
 .env.*
 !.env.example
