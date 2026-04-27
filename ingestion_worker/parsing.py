@@ -41,6 +41,17 @@ class EmptyScannedPdfError(ValueError):
         self.page_count = page_count
 
 
+def _trim_text_span(text: str, start_offset: int, end_offset: int) -> tuple[str, int, int]:
+    """Trim a source span while keeping offsets aligned to the trimmed text."""
+    leading_trim = len(text) - len(text.lstrip())
+    trailing_trim = len(text) - len(text.rstrip())
+    return (
+        text.strip(),
+        start_offset + leading_trim,
+        end_offset - trailing_trim,
+    )
+
+
 class BaseDocumentParser(ABC):
     """Parser contract for converting source files into normalized sections."""
 
@@ -69,7 +80,12 @@ class MarkdownDocumentParser(BaseDocumentParser):
         current_offset = 0
 
         def flush(end_offset: int) -> None:
-            body = "\n".join(body_lines).strip()
+            raw_body = text[body_start_offset:end_offset]
+            body, start_offset, adjusted_end_offset = _trim_text_span(
+                raw_body,
+                body_start_offset,
+                end_offset,
+            )
             if not body:
                 return
             sections.append(
@@ -79,8 +95,8 @@ class MarkdownDocumentParser(BaseDocumentParser):
                     filename=filename,
                     heading_path=tuple(headings),
                     section_title=current_title,
-                    start_offset=body_start_offset,
-                    end_offset=end_offset,
+                    start_offset=start_offset,
+                    end_offset=adjusted_end_offset,
                 )
             )
 
@@ -126,7 +142,11 @@ class PdfDocumentParser(BaseDocumentParser):
         for page_index, page in enumerate(reader.pages, start=1):
             page_text = page.extract_text() or ""
             for match in self._paragraph_pattern.finditer(page_text):
-                paragraph = match.group(0).strip()
+                paragraph, start_offset, end_offset = _trim_text_span(
+                    match.group(0),
+                    match.start(),
+                    match.end(),
+                )
                 if not paragraph:
                     continue
                 sections.append(
@@ -135,8 +155,8 @@ class PdfDocumentParser(BaseDocumentParser):
                         source_path=source_path,
                         filename=filename,
                         page_number=page_index,
-                        start_offset=match.start(),
-                        end_offset=match.end(),
+                        start_offset=start_offset,
+                        end_offset=end_offset,
                     )
                 )
 

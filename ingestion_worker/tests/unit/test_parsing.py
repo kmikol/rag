@@ -12,10 +12,8 @@ from ingestion_worker.parsing import (
 
 def test_markdown_parser_preserves_heading_paths_and_offsets(tmp_path: Path) -> None:
     path = tmp_path / "notes.md"
-    path.write_text(
-        "# Project\n\nIntro text.\n\n## Detail\n\nDetail text.\n",
-        encoding="utf-8",
-    )
+    markdown_text = "# Project\n\nIntro text.\n\n## Detail\n\nDetail text.\n"
+    path.write_text(markdown_text, encoding="utf-8")
 
     document = MarkdownDocumentParser().parse(path)
 
@@ -27,14 +25,16 @@ def test_markdown_parser_preserves_heading_paths_and_offsets(tmp_path: Path) -> 
     assert document.sections[0].section_title == "Project"
     assert document.sections[0].text == "Intro text."
     assert (
-        path.read_text(encoding="utf-8")[
-            document.sections[0].start_offset : document.sections[0].end_offset
-        ].strip()
+        markdown_text[document.sections[0].start_offset : document.sections[0].end_offset]
         == "Intro text."
     )
     assert document.sections[1].heading_path == ("Project", "Detail")
     assert document.sections[1].section_title == "Detail"
     assert document.sections[1].text == "Detail text."
+    assert (
+        markdown_text[document.sections[1].start_offset : document.sections[1].end_offset]
+        == "Detail text."
+    )
 
 
 def test_registry_skips_unsupported_formats(tmp_path: Path) -> None:
@@ -47,6 +47,10 @@ def test_registry_skips_unsupported_formats(tmp_path: Path) -> None:
 def test_pdf_parser_preserves_page_numbers_and_offsets(monkeypatch, tmp_path: Path) -> None:
     path = tmp_path / "paper.pdf"
     path.write_bytes(b"%PDF test placeholder")
+    page_texts = [
+        "First paragraph.\n\nSecond paragraph.",
+        "Third page text.",
+    ]
 
     class FakePage:
         def __init__(self, text: str):
@@ -58,10 +62,7 @@ def test_pdf_parser_preserves_page_numbers_and_offsets(monkeypatch, tmp_path: Pa
     class FakeReader:
         def __init__(self, file_path: str):
             assert file_path == str(path)
-            self.pages = [
-                FakePage("First paragraph.\n\nSecond paragraph."),
-                FakePage("Third page text."),
-            ]
+            self.pages = [FakePage(page_text) for page_text in page_texts]
 
     monkeypatch.setattr("ingestion_worker.parsing.PdfReader", FakeReader)
 
@@ -74,8 +75,18 @@ def test_pdf_parser_preserves_page_numbers_and_offsets(monkeypatch, tmp_path: Pa
         "Second paragraph.",
         "Third page text.",
     ]
+    assert document.sections[0].start_offset == 0
+    assert document.sections[0].end_offset == 16
+    assert (
+        page_texts[0][document.sections[0].start_offset : document.sections[0].end_offset]
+        == "First paragraph."
+    )
     assert document.sections[1].start_offset == 18
     assert document.sections[1].end_offset == 35
+    assert (
+        page_texts[0][document.sections[1].start_offset : document.sections[1].end_offset]
+        == "Second paragraph."
+    )
 
 
 def test_pdf_parser_detects_empty_or_scanned_pdf(monkeypatch, tmp_path: Path) -> None:
