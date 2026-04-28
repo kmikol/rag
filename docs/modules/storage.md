@@ -30,7 +30,7 @@ metadata service.
 Qdrant stores chunk embeddings in the configured `QDRANT_COLLECTION`. Services use
 `shared.vector_index.QdrantVectorIndex` to create or verify the collection, upsert
 chunk vectors, delete vectors by document or document version, and run dense vector
-searches that return payload IDs for PostgreSQL metadata hydration.
+searches that return payload IDs used to load chunk metadata from PostgreSQL.
 
 Related decisions:
 

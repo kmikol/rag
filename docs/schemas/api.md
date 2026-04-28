@@ -1,7 +1,5 @@
 # API Schemas
 
-API schemas are not implemented yet.
-
 Shared conventions already exist for:
 
 | Schema | Purpose |
@@ -9,12 +7,20 @@ Shared conventions already exist for:
 | `HealthResponse` | Standard service health response: `service`, `status` |
 | `ErrorResponse` | Standard error envelope: `error`, `message`, optional `request_id` |
 
+Search schemas:
+
+| Schema | Purpose |
+|--------|---------|
+| `SearchRequest` | Request body for `POST /search`: non-empty `query`, optional `limit` defaulting to 10 |
+| `SearchResponse` | Search response containing ranked `results` |
+| `SearchResult` | Citation-ready chunk result with score, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
+
 Minimum planned API surface:
 
 | Service | Endpoint | Purpose |
 |---------|----------|---------|
 | `api-service` | `POST /chat` | Chat with retrieved grounding context |
-| `api-service` | `POST /search` | Retrieve ranked results without generation |
+| `api-service` | `POST /search` | Retrieve dense ranked results without generation |
 | `api-service` | `POST /ingest` | Create an ingestion job |
 | `api-service` | `GET /ingest/{job_id}` | Inspect ingestion job status |
 | `api-service` | `GET /documents` | List ingested documents |

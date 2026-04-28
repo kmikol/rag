@@ -196,3 +196,52 @@ def test_create_chunks_preserves_citation_metadata() -> None:
             assert chunks[0]["token_count"] == 2
     finally:
         connection.close()
+
+
+def test_get_active_chunks_by_ids_returns_only_active_version_chunks() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            document = repo.get_or_create_document("/watch/example.md")
+            first_version = repo.create_document_version(document["id"], "a" * 64)
+            second_version = repo.create_document_version(document["id"], "b" * 64)
+            first_chunks = repo.create_chunks(
+                document["id"],
+                first_version["id"],
+                [
+                    ChunkRecord(
+                        text="Old chunk",
+                        source_path="/watch/example.md",
+                        original_filename="example.md",
+                    )
+                ],
+            )
+            second_chunks = repo.create_chunks(
+                document["id"],
+                second_version["id"],
+                [
+                    ChunkRecord(
+                        text="Current chunk",
+                        source_path="/watch/example.md",
+                        original_filename="example.md",
+                    )
+                ],
+            )
+            repo.mark_document_version_active(second_version["id"])
+
+            chunks = repo.get_active_chunks_by_ids(
+                [first_chunks[0]["id"], second_chunks[0]["id"], "missing"]
+            )
+
+            assert list(chunks) == [second_chunks[0]["id"]]
+            assert chunks[second_chunks[0]["id"]]["text"] == "Current chunk"
+    finally:
+        connection.close()
+
+
+def test_get_active_chunks_by_ids_handles_empty_input() -> None:
+    repo, connection = open_repository()
+    try:
+        assert repo.get_active_chunks_by_ids([]) == {}
+    finally:
+        connection.close()

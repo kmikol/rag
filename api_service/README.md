@@ -18,18 +18,24 @@ Implemented in this skeleton:
 | `POST` | `/ingest` | Create an ingestion job |
 | `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
 | `GET` | `/documents` | List ingested documents |
+| `POST` | `/search` | Return dense retrieval results with citation metadata |
 
 Planned:
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/chat` | Generate an answer grounded in retrieved chunks |
-| `POST` | `/search` | Return ranked chunks without generation |
 | `DELETE` | `/documents/{id}` | Delete a document from the corpus |
 
 The ingestion and document endpoints require `Authorization: Bearer <RAG_API_KEY>`.
 `POST /ingest` accepts an optional `requested_path` JSON field for single-file
 ingestion; omitting it creates a full-scan job.
+
+`POST /search` accepts a non-empty `query` string and optional `limit` integer.
+It embeds the query through `embedding-service`, searches the configured Qdrant
+collection, loads active chunk metadata from PostgreSQL, and returns ranked
+results with citation fields. Sparse PostgreSQL full-text search is not wired
+yet because the current schema has no FTS index support.
 
 ## Configuration
 

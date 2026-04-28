@@ -8,6 +8,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
 
+from api_service.retrieval import (
+    HttpQueryEmbeddingClient,
+    QueryEmbeddingClient,
+    RetrievalError,
+    SearchRetriever,
+    VectorIndex,
+)
 from shared.config import get_settings
 from shared.logging_config import configure_logging
 from shared.repository import MetadataRepository, create_metadata_engine
@@ -17,7 +24,10 @@ from shared.schemas import (
     HealthResponse,
     IngestionJobResponse,
     IngestRequest,
+    SearchRequest,
+    SearchResponse,
 )
+from shared.vector_index import QdrantVectorIndex
 
 configure_logging()
 
@@ -29,6 +39,18 @@ bearer_auth = HTTPBearer(auto_error=False)
 def get_metadata_engine() -> Engine:
     """Return the configured PostgreSQL metadata engine for API requests."""
     return create_metadata_engine(get_settings().postgres_url)
+
+
+@lru_cache
+def get_query_embedding_client() -> QueryEmbeddingClient:
+    """Return the embedding-service client used for interactive search queries."""
+    return HttpQueryEmbeddingClient(get_settings().embedding_service_url)
+
+
+@lru_cache
+def get_vector_index() -> VectorIndex:
+    """Return the configured Qdrant vector index for retrieval."""
+    return QdrantVectorIndex()
 
 
 def open_metadata_repository() -> Iterator[MetadataRepository]:
@@ -107,3 +129,28 @@ def list_documents(
         for row in repository.list_documents()
     ]
     return DocumentListResponse(documents=documents)
+
+
+@app.post(
+    "/search",
+    response_model=SearchResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def search(
+    request: SearchRequest,
+    repository: Annotated[MetadataRepository, Depends(open_metadata_repository)],
+    embedding_client: Annotated[QueryEmbeddingClient, Depends(get_query_embedding_client)],
+    vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
+) -> SearchResponse:
+    retriever = SearchRetriever(
+        embedding_client=embedding_client,
+        vector_index=vector_index,
+    )
+    try:
+        results = retriever.search(request.query, request.limit, repository)
+    except RetrievalError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
+    return SearchResponse(results=results)

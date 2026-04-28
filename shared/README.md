@@ -37,7 +37,7 @@ an explicit transaction. It supports:
 `QDRANT_COLLECTION`. It creates or verifies the chunk-vector collection for a
 caller-provided embedding dimension, upserts chunk vectors, deletes vectors by
 `document_id` or `document_version_id`, and returns dense search results with
-payload IDs needed for PostgreSQL metadata hydration.
+payload IDs needed to load chunk metadata from PostgreSQL.
 
 ## Configuration
 
