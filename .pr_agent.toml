@@ -1,18 +1,33 @@
 [config]
-model = "gemini/gemini-2.5-flash"
-fallback_models = ["gemini/gemini-2.5-flash"]
+model = "gemini/gemini-3-flash"
+fallback_models = ["gemini/gemini-3-flash"]
 
 [pr_reviewer]
 require_tests_review = true
 require_score_review = false
 require_security_review = true
 require_estimate_effort_to_review = true
-num_code_suggestions = 4
+num_code_suggestions = 6
+num_max_findings = 6
+extra_instructions = """
+Review like a senior maintainer for this private RAG project.
+Prioritize correctness, data-loss risk, security boundaries, missing tests,
+runtime/configuration bugs, and AGENTS.md rule violations.
+Avoid style-only comments unless they hide a real maintenance issue.
+"""
 
 [pr_description]
 publish_labels = true
 add_original_user_description = true
 
 [pr_code_suggestions]
-num_code_suggestions = 4
+num_code_suggestions = 6
 summarize = true
+commitable_code_suggestions = true
+focus_only_on_problems = true
+suggestions_score_threshold = 6
+extra_instructions = """
+Prefer specific, line-level suggestions with clear reasoning.
+Focus on edge cases, unsafe filesystem behavior, concurrency/race risks,
+test gaps, configuration mistakes, and docs/code contract mismatches.
+"""
