@@ -142,10 +142,6 @@ class QdrantVectorIndex:
     def _extract_single_vector_size(self, vector_params: Any) -> int:
         if isinstance(vector_params, models.VectorParams):
             return vector_params.size
-        if isinstance(vector_params, dict) and len(vector_params) == 1:
-            only_params = next(iter(vector_params.values()))
-            if isinstance(only_params, models.VectorParams):
-                return only_params.size
 
         raise VectorIndexConfigurationError(
             f"Qdrant collection '{self.collection_name}' must use one unnamed dense vector."

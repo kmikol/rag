@@ -134,6 +134,33 @@ def test_ensure_collection_rejects_dimension_mismatch() -> None:
         raise AssertionError("Expected dimension mismatch to fail fast")
 
 
+def test_ensure_collection_rejects_named_vector_collection() -> None:
+    class FakeNamedVectorQdrantClient(FakeQdrantClient):
+        def get_collection(self, collection_name: str) -> SimpleNamespace:
+            return SimpleNamespace(
+                config=SimpleNamespace(
+                    params=SimpleNamespace(
+                        vectors={
+                            "named_vector": models.VectorParams(
+                                size=8,
+                                distance=models.Distance.COSINE,
+                            )
+                        }
+                    )
+                )
+            )
+
+    client = FakeNamedVectorQdrantClient(collection_exists=True, dimension=8)
+    index = QdrantVectorIndex(collection_name="test_chunks", client=client)
+
+    try:
+        index.ensure_collection(8)
+    except VectorIndexConfigurationError as error:
+        assert "must use one unnamed dense vector" in str(error)
+    else:
+        raise AssertionError("Expected named vector collection to fail fast")
+
+
 def test_upsert_chunks_uses_chunk_id_as_point_id_and_required_payload() -> None:
     client = FakeQdrantClient()
     index = QdrantVectorIndex(collection_name="test_chunks", client=client)
