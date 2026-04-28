@@ -6,9 +6,8 @@ The `ingestion-worker` owns background document processing.
 
 The worker claims ingestion jobs, scans configured watch roots, reconciles the index against the filesystem source of truth, parses supported files, chunks text, calls `embedding-service`, and writes metadata/vectors/document copies.
 
-The current implementation exposes the health endpoint plus filesystem scanning,
-managed-copy, parser, and chunker building blocks. Job claiming, embedding calls,
-indexing, and PostgreSQL writes are intentionally outside this module slice.
+The current implementation exposes the health endpoint plus a one-shot worker
+pipeline for processing pending PostgreSQL ingestion jobs.
 
 ## Responsibilities
 
@@ -24,6 +23,12 @@ indexing, and PostgreSQL writes are intentionally outside this module slice.
 - Skip unsupported file formats gracefully by returning `None` from the registry.
 - Chunk parsed sections without crossing parser-provided structure boundaries.
 - Preserve citation metadata on chunks: source path, filename, Markdown heading path, PDF page number, section title, and character offsets where available.
+- Claim pending ingestion jobs with PostgreSQL row locking.
+- Process full-scan and single-path ingestion jobs once per worker invocation.
+- Call `embedding-service` for batch document embeddings.
+- Persist documents, versions, chunks, job state, and embedding metadata in PostgreSQL.
+- Upsert chunk vectors into Qdrant after chunk metadata is persisted.
+- Skip duplicate raw-byte content hashes without creating another document version.
 
 ## API Contract
 
@@ -34,6 +39,34 @@ Implemented:
 | `GET` | `/health` | Service health check |
 
 The worker is primarily job-driven through PostgreSQL-backed job records, not an external public API.
+
+## Worker Pipeline Contract
+
+`ingestion_worker.pipeline` provides:
+
+- `process_next_job()`: claims and processes the oldest pending ingestion job,
+  returning `True` when a job was claimed and `False` when no pending job exists.
+- `process_pending_jobs_once()`: one-shot wrapper for manual runs and tests.
+- `run_next_job()` and `run_pending_job_once()`: structured-result variants
+  used by automation and the CLI.
+- `HttpEmbeddingClient`: minimal client for `GET /model-info` and
+  `POST /embed/batch` on `embedding-service`.
+
+The CLI entrypoint is:
+
+```bash
+python -m ingestion_worker.worker
+```
+
+Each invocation processes at most one job and exits. It does not start a polling
+loop or scheduler. Pass `--fail-on-error` when automation should receive a
+non-zero exit code for a claimed job that ends in `failed`; an idle run with no
+pending job still exits successfully.
+
+Job status progresses through the persisted ADR-005 lifecycle states. A document
+version is marked active only after Qdrant upsert succeeds. Hard failures mark
+the job failed with an error message and mark any in-progress document/version
+failed for inspection.
 
 ## Filesystem Contract
 

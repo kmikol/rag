@@ -7,3 +7,5 @@
 ::: ingestion_worker.parsing
 
 ::: ingestion_worker.chunking
+
+::: ingestion_worker.pipeline
