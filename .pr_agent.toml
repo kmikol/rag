@@ -1,7 +1,6 @@
 [config]
-model = "gemini/gemini-3-flash"
-fallback_models = ["gemini/gemini-3-flash"]
-custom_model_max_tokens = 256000
+model = "gemini/gemini-2.5-flash"
+fallback_models = ["gemini/gemini-2.5-flash"]
 
 [pr_reviewer]
 require_tests_review = true
