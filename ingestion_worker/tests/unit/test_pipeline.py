@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, select
 
 from ingestion_worker.parsing import BaseDocumentParser, ParsedDocument, ParserRegistry
-from ingestion_worker.pipeline import BatchEmbeddingResult, EmbeddingModelInfo, process_next_job
+from ingestion_worker.pipeline import (
+    BatchEmbeddingResult,
+    EmbeddingModelInfo,
+    process_next_job,
+    run_next_job,
+)
 from shared.config import AppSettings
 from shared.db import chunks, metadata
 from shared.repository import MetadataRepository
@@ -15,8 +21,10 @@ from shared.vector_index import ChunkVector
 class FakeEmbeddingClient:
     def __init__(self) -> None:
         self.embedded_texts: list[str] = []
+        self.model_info_calls = 0
 
     def model_info(self) -> EmbeddingModelInfo:
+        self.model_info_calls += 1
         return EmbeddingModelInfo(model_name="fake-model", dimension=3)
 
     def embed_batch(self, texts: list[str]) -> BatchEmbeddingResult:
@@ -31,10 +39,12 @@ class FakeEmbeddingClient:
 class FakeVectorIndex:
     def __init__(self) -> None:
         self.dimension: int | None = None
+        self.ensure_calls: list[int] = []
         self.vectors: list[ChunkVector] = []
 
     def ensure_collection(self, dimension: int) -> None:
         self.dimension = dimension
+        self.ensure_calls.append(dimension)
 
     def upsert_chunks(self, chunks: list[ChunkVector]) -> None:
         self.vectors.extend(chunks)
@@ -77,6 +87,39 @@ def test_process_next_job_returns_false_when_no_job(tmp_path: Path) -> None:
     assert processed is False
 
 
+def test_run_next_job_builds_default_vector_index_from_explicit_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    created_indexes: list[object] = []
+
+    class RecordingVectorIndex(FakeVectorIndex):
+        def __init__(self, url: str | None = None, collection_name: str | None = None):
+            super().__init__()
+            self.url = url
+            self.collection_name = collection_name
+            created_indexes.append(self)
+
+    settings = make_settings(tmp_path)
+    settings.qdrant_url = "http://explicit-qdrant:6333"
+    settings.qdrant_collection = "explicit_chunks"
+    monkeypatch.setattr("ingestion_worker.pipeline.QdrantVectorIndex", RecordingVectorIndex)
+
+    result = run_next_job(
+        worker_id="unit-worker",
+        settings=settings,
+        engine=make_engine(),
+        embedding_client=FakeEmbeddingClient(),
+    )
+
+    assert result.claimed is False
+    assert len(created_indexes) == 1
+    created_index = created_indexes[0]
+    assert isinstance(created_index, RecordingVectorIndex)
+    assert created_index.url == "http://explicit-qdrant:6333"
+    assert created_index.collection_name == "explicit_chunks"
+
+
 def test_process_next_job_ingests_requested_markdown(tmp_path: Path) -> None:
     engine = make_engine()
     source = tmp_path / "notes.md"
@@ -110,8 +153,50 @@ def test_process_next_job_ingests_requested_markdown(tmp_path: Path) -> None:
     assert documents[0]["active_version"]["embedding_dimension"] == 3
     assert persisted_chunks[0]["text"] == "Alpha beta gamma."
     assert embedding_client.embedded_texts == ["Alpha beta gamma."]
+    assert embedding_client.model_info_calls == 1
     assert vector_index.dimension == 3
+    assert vector_index.ensure_calls == [3]
     assert len(vector_index.vectors) == 1
+
+
+def test_process_next_job_full_scan_caches_model_info_and_collection_setup(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine()
+    watch_root = tmp_path / "watch"
+    watch_root.mkdir()
+    first = watch_root / "first.md"
+    second = watch_root / "second.md"
+    first.write_text("# First\n\nAlpha content.", encoding="utf-8")
+    second.write_text("# Second\n\nBeta content.", encoding="utf-8")
+    embedding_client = FakeEmbeddingClient()
+    vector_index = FakeVectorIndex()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        job = repository.create_ingestion_job()
+
+    processed = process_next_job(
+        worker_id="unit-worker",
+        settings=make_settings(tmp_path),
+        engine=engine,
+        embedding_client=embedding_client,
+        vector_index=vector_index,
+    )
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        updated_job = repository.get_ingestion_job(job["id"])
+        documents = repository.list_documents()
+
+    assert processed is True
+    assert updated_job["status"] == "active"
+    assert updated_job["processed_items"] == 2
+    assert len(documents) == 2
+    assert embedding_client.model_info_calls == 1
+    assert embedding_client.embedded_texts == ["Alpha content.", "Beta content."]
+    assert vector_index.ensure_calls == [3]
+    assert len(vector_index.vectors) == 2
 
 
 def test_process_next_job_skips_duplicate_content_hash(tmp_path: Path) -> None:

@@ -44,6 +44,42 @@ class BatchEmbeddingResult:
     dimension: int
 
 
+@dataclass(frozen=True)
+class IngestionRunResult:
+    """Structured outcome for one worker invocation."""
+
+    claimed: bool
+    status: str
+    job_id: str | None = None
+    processed_items: int = 0
+    error_message: str | None = None
+
+
+@dataclass
+class IngestionJobContext:
+    """Per-job cache for stable service metadata and index setup."""
+
+    embedding_client: EmbeddingClient
+    vector_index: VectorIndex
+    model_info: EmbeddingModelInfo | None = None
+    ensured_dimensions: set[int] | None = None
+
+    def get_model_info(self) -> EmbeddingModelInfo:
+        """Fetch embedding model info at most once for a claimed job."""
+        if self.model_info is None:
+            self.model_info = self.embedding_client.model_info()
+        return self.model_info
+
+    def ensure_collection(self, dimension: int) -> None:
+        """Ensure the vector collection once for each dimension in this job."""
+        if self.ensured_dimensions is None:
+            self.ensured_dimensions = set()
+        if dimension in self.ensured_dimensions:
+            return
+        self.vector_index.ensure_collection(dimension)
+        self.ensured_dimensions.add(dimension)
+
+
 class EmbeddingClient(Protocol):
     def model_info(self) -> EmbeddingModelInfo:
         """Return the currently configured embedding model identity."""
@@ -124,6 +160,11 @@ def process_pending_jobs_once(worker_id: str | None = None) -> bool:
     return process_next_job(worker_id=worker_id)
 
 
+def run_pending_job_once(worker_id: str | None = None) -> IngestionRunResult:
+    """Process at most one pending ingestion job and return its outcome."""
+    return run_next_job(worker_id=worker_id)
+
+
 def process_next_job(
     worker_id: str | None = None,
     settings: AppSettings | None = None,
@@ -134,12 +175,36 @@ def process_next_job(
     chunker: StructureAwareChunker | None = None,
 ) -> bool:
     """Claim and process the oldest pending ingestion job, if one exists."""
+    return run_next_job(
+        worker_id=worker_id,
+        settings=settings,
+        engine=engine,
+        embedding_client=embedding_client,
+        vector_index=vector_index,
+        parser_registry=parser_registry,
+        chunker=chunker,
+    ).claimed
+
+
+def run_next_job(
+    worker_id: str | None = None,
+    settings: AppSettings | None = None,
+    engine: Engine | None = None,
+    embedding_client: EmbeddingClient | None = None,
+    vector_index: VectorIndex | None = None,
+    parser_registry: ParserRegistry | None = None,
+    chunker: StructureAwareChunker | None = None,
+) -> IngestionRunResult:
+    """Claim and process the oldest pending ingestion job, returning its outcome."""
     resolved_settings = settings or get_settings()
     resolved_engine = engine or create_metadata_engine(resolved_settings.postgres_url)
     resolved_embedding_client = embedding_client or HttpEmbeddingClient(
         resolved_settings.embedding_service_url
     )
-    resolved_vector_index = vector_index or QdrantVectorIndex()
+    resolved_vector_index = vector_index or QdrantVectorIndex(
+        url=resolved_settings.qdrant_url,
+        collection_name=resolved_settings.qdrant_collection,
+    )
     resolved_parser_registry = parser_registry or default_parser_registry()
     resolved_chunker = chunker or StructureAwareChunker()
     resolved_worker_id = worker_id or _default_worker_id()
@@ -148,32 +213,46 @@ def process_next_job(
         repository = MetadataRepository(connection)
         job = repository.claim_next_ingestion_job(resolved_worker_id)
         if job is None:
-            return False
+            return IngestionRunResult(claimed=False, status="idle")
 
         try:
             processed_items = _process_claimed_job(
                 repository=repository,
                 job=job,
                 settings=resolved_settings,
-                embedding_client=resolved_embedding_client,
-                vector_index=resolved_vector_index,
+                context=IngestionJobContext(
+                    embedding_client=resolved_embedding_client,
+                    vector_index=resolved_vector_index,
+                ),
                 parser_registry=resolved_parser_registry,
                 chunker=resolved_chunker,
             )
         except Exception as exc:
-            _mark_job_failed(repository, job["id"], str(exc))
+            failed_job = _mark_job_failed(repository, str(job["id"]), str(exc))
+            return IngestionRunResult(
+                claimed=True,
+                status="failed",
+                job_id=str(job["id"]),
+                processed_items=_required_int(failed_job, "processed_items"),
+                error_message=str(failed_job["error_message"]),
+            )
         else:
-            repository.update_ingestion_job(job["id"], "active", processed_items)
+            completed_job = repository.update_ingestion_job(job["id"], "active", processed_items)
+            return IngestionRunResult(
+                claimed=True,
+                status="active",
+                job_id=str(completed_job["id"]),
+                processed_items=int(completed_job["processed_items"]),
+            )
 
-    return True
+    raise RuntimeError("unreachable")
 
 
 def _process_claimed_job(
     repository: MetadataRepository,
     job: dict[str, object],
     settings: AppSettings,
-    embedding_client: EmbeddingClient,
-    vector_index: VectorIndex,
+    context: IngestionJobContext,
     parser_registry: ParserRegistry,
     chunker: StructureAwareChunker,
 ) -> int:
@@ -185,8 +264,7 @@ def _process_claimed_job(
             job_id=str(job["id"]),
             source_path=source_path,
             settings=settings,
-            embedding_client=embedding_client,
-            vector_index=vector_index,
+            context=context,
             parser_registry=parser_registry,
             chunker=chunker,
         )
@@ -228,8 +306,7 @@ def _process_source_path(
     job_id: str,
     source_path: Path,
     settings: AppSettings,
-    embedding_client: EmbeddingClient,
-    vector_index: VectorIndex,
+    context: IngestionJobContext,
     parser_registry: ParserRegistry,
     chunker: StructureAwareChunker,
 ) -> None:
@@ -270,8 +347,8 @@ def _process_source_path(
         repository.update_document_version_state(document_version_id, "chunked")
         repository.update_ingestion_job(job_id, "chunked")
 
-        model_info = embedding_client.model_info()
-        embedding_result = embedding_client.embed_batch([chunk.text for chunk in chunks])
+        model_info = context.get_model_info()
+        embedding_result = context.embedding_client.embed_batch([chunk.text for chunk in chunks])
         if embedding_result.dimension != model_info.dimension:
             raise IngestionPipelineError(
                 "Embedding service model-info dimension does not match batch response."
@@ -289,8 +366,8 @@ def _process_source_path(
             document_version_id,
             [_chunk_record(chunk) for chunk in chunks],
         )
-        vector_index.ensure_collection(embedding_result.dimension)
-        vector_index.upsert_chunks(
+        context.ensure_collection(embedding_result.dimension)
+        context.vector_index.upsert_chunks(
             [
                 ChunkVector(
                     chunk_id=str(chunk_record["id"]),
@@ -335,8 +412,12 @@ def _chunk_record(chunk: DocumentChunk) -> ChunkRecord:
     )
 
 
-def _mark_job_failed(repository: MetadataRepository, job_id: str, message: str) -> None:
-    repository.update_ingestion_job(job_id, "failed", error_message=message)
+def _mark_job_failed(
+    repository: MetadataRepository,
+    job_id: str,
+    message: str,
+) -> dict[str, object]:
+    return repository.update_ingestion_job(job_id, "failed", error_message=message)
 
 
 def _required_str(body: dict[str, object], key: str) -> str:

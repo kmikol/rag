@@ -47,6 +47,8 @@ The worker is primarily job-driven through PostgreSQL-backed job records, not an
 - `process_next_job()`: claims and processes the oldest pending ingestion job,
   returning `True` when a job was claimed and `False` when no pending job exists.
 - `process_pending_jobs_once()`: one-shot wrapper for manual runs and tests.
+- `run_next_job()` and `run_pending_job_once()`: structured-result variants
+  used by automation and the CLI.
 - `HttpEmbeddingClient`: minimal client for `GET /model-info` and
   `POST /embed/batch` on `embedding-service`.
 
@@ -57,7 +59,9 @@ python -m ingestion_worker.worker
 ```
 
 Each invocation processes at most one job and exits. It does not start a polling
-loop or scheduler.
+loop or scheduler. Pass `--fail-on-error` when automation should receive a
+non-zero exit code for a claimed job that ends in `failed`; an idle run with no
+pending job still exits successfully.
 
 Job status progresses through the persisted ADR-005 lifecycle states. A document
 version is marked active only after Qdrant upsert succeeds. Hard failures mark
