@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ class UnhealthyWatchRoot:
 
     root_path: Path
     reason: str
+    detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,24 +70,32 @@ def copy_to_managed_store(
     document_store_path: Path,
 ) -> ManagedCopy:
     """Copy a source file into the managed store using a hash-derived path."""
+    normalized_hash = _normalize_content_hash(content_hash)
     source = Path(source_path)
     destination = (
         Path(document_store_path).expanduser()
-        / content_hash[:2]
-        / f"{content_hash}{source.suffix.lower()}"
+        / normalized_hash[:2]
+        / f"{normalized_hash}{source.suffix.lower()}"
     )
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     if destination.exists():
-        if compute_sha256(destination) != content_hash:
+        if compute_sha256(destination) != normalized_hash:
             raise ValueError(f"Managed copy hash mismatch: {destination}")
     else:
-        shutil.copyfile(source, destination)
+        temp_path = _copy_to_temporary_file(source, destination.parent)
+        try:
+            if compute_sha256(temp_path) != normalized_hash:
+                raise ValueError(f"Source content hash mismatch: {source}")
+            os.replace(temp_path, destination)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
 
     return ManagedCopy(
         source_path=source,
         managed_path=destination,
-        content_hash=content_hash,
+        content_hash=normalized_hash,
         byte_size=destination.stat().st_size,
     )
 
@@ -117,7 +127,7 @@ def scan_watch_roots(
             discovered = _scan_root(root_path, registry, include_hidden)
         except OSError as exc:
             unhealthy_roots.append(
-                UnhealthyWatchRoot(root_path=root_path, reason=f"unreadable: {exc}")
+                UnhealthyWatchRoot(root_path=root_path, reason="unreadable", detail=str(exc))
             )
             continue
         files.extend(discovered)
@@ -172,3 +182,24 @@ def _scan_root(
 def _has_hidden_part(path: Path, root_path: Path) -> bool:
     relative_path = path.relative_to(root_path)
     return any(part.startswith(".") for part in relative_path.parts)
+
+
+def _normalize_content_hash(content_hash: str) -> str:
+    normalized = content_hash.lower()
+    if len(normalized) != 64 or any(
+        character not in "0123456789abcdef" for character in normalized
+    ):
+        raise ValueError("content_hash must be a 64-character SHA-256 hex digest")
+    return normalized
+
+
+def _copy_to_temporary_file(source: Path, destination_directory: Path) -> Path:
+    with tempfile.NamedTemporaryFile(
+        dir=destination_directory,
+        prefix=".tmp-",
+        delete=False,
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+        with source.open("rb") as source_file:
+            shutil.copyfileobj(source_file, temp_file)
+    return temp_path

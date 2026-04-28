@@ -52,6 +52,11 @@ and resolved directories/files are tracked so cycles and duplicate discoveries d
 not repeat work. Unhealthy roots are reported in the scan result; deletion
 reconciliation is intentionally out of scope for this module slice.
 
+Managed-copy hashes must be 64-character SHA-256 hex digests. Hash values are
+normalized to lowercase before path construction, existing managed copies are
+verified before reuse, and new copies are written through a temporary file before
+being atomically moved into place.
+
 ## Parser Contract
 
 `ingestion_worker.parsing` provides:

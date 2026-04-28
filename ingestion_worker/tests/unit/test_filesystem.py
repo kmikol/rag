@@ -140,3 +140,60 @@ def test_copy_to_managed_store_is_idempotent_for_identical_content(tmp_path: Pat
     second_copy = copy_to_managed_store(source, content_hash, document_store)
 
     assert second_copy == first_copy
+
+
+def test_copy_to_managed_store_normalizes_uppercase_hash(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_bytes(b"managed content")
+    content_hash = compute_sha256(source)
+    document_store = tmp_path / "documents"
+
+    managed_copy = copy_to_managed_store(source, content_hash.upper(), document_store)
+
+    assert managed_copy.content_hash == content_hash
+    assert managed_copy.managed_path == document_store / content_hash[:2] / f"{content_hash}.md"
+
+
+def test_copy_to_managed_store_rejects_invalid_hash(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_bytes(b"managed content")
+
+    try:
+        copy_to_managed_store(source, "../not-a-sha", tmp_path / "documents")
+    except ValueError as exc:
+        assert str(exc) == "content_hash must be a 64-character SHA-256 hex digest"
+    else:
+        raise AssertionError("expected invalid content hash to raise")
+
+
+def test_copy_to_managed_store_rejects_existing_mismatched_copy(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_bytes(b"managed content")
+    content_hash = compute_sha256(source)
+    document_store = tmp_path / "documents"
+    managed_path = document_store / content_hash[:2] / f"{content_hash}.md"
+    managed_path.parent.mkdir(parents=True)
+    managed_path.write_bytes(b"different content")
+
+    try:
+        copy_to_managed_store(source, content_hash, document_store)
+    except ValueError as exc:
+        assert str(exc) == f"Managed copy hash mismatch: {managed_path}"
+    else:
+        raise AssertionError("expected mismatched managed copy to raise")
+
+
+def test_copy_to_managed_store_rejects_source_hash_mismatch(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_bytes(b"managed content")
+    wrong_hash = compute_sha256(tmp_path / "source.md")
+    source.write_bytes(b"changed content")
+
+    try:
+        copy_to_managed_store(source, wrong_hash, tmp_path / "documents")
+    except ValueError as exc:
+        assert str(exc) == f"Source content hash mismatch: {source}"
+    else:
+        raise AssertionError("expected source hash mismatch to raise")
+
+    assert list((tmp_path / "documents" / wrong_hash[:2]).iterdir()) == []
