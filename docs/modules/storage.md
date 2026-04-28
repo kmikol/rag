@@ -25,6 +25,13 @@ Services use `shared.repository.MetadataRepository` inside explicit transactions
 repository is shared by `api-service` and `ingestion-worker`; it is not a standalone
 metadata service.
 
+## Qdrant Vector Index
+
+Qdrant stores chunk embeddings in the configured `QDRANT_COLLECTION`. Services use
+`shared.vector_index.QdrantVectorIndex` to create or verify the collection, upsert
+chunk vectors, delete vectors by document or document version, and run dense vector
+searches that return payload IDs for PostgreSQL metadata hydration.
+
 Related decisions:
 
 - [ADR 001: Data Sources and Ingestion](../adr/001-data-sources-and-ingestion.md)

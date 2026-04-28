@@ -14,6 +14,7 @@ class AppSettings(BaseSettings):
         default="postgresql+psycopg://rag:rag@localhost:5432/rag", alias="POSTGRES_URL"
     )
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
+    qdrant_collection: str = Field(default="rag_chunks", alias="QDRANT_COLLECTION")
     embedding_service_url: str = Field(
         default="http://localhost:8001", alias="EMBEDDING_SERVICE_URL"
     )
