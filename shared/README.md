@@ -16,6 +16,7 @@ the Python table definitions and repository helpers used by the services.
 - Shared API response schemas.
 - SQLAlchemy metadata table definitions for PostgreSQL.
 - A small repository layer for document metadata, chunks, and ingestion jobs.
+- A small Qdrant vector-index client for chunk embeddings.
 
 ## Callable Contract
 
@@ -32,14 +33,23 @@ an explicit transaction. It supports:
 `shared.repository.create_metadata_engine` creates the SQLAlchemy engine from
 `POSTGRES_URL`.
 
+`shared.vector_index.QdrantVectorIndex` is initialized from `QDRANT_URL` and
+`QDRANT_COLLECTION`. It creates or verifies the chunk-vector collection for a
+caller-provided embedding dimension, upserts chunk vectors, deletes vectors by
+`document_id` or `document_version_id`, and returns dense search results with
+payload IDs needed for PostgreSQL metadata hydration.
+
 ## Configuration
 
 - `POSTGRES_URL`
+- `QDRANT_URL`
+- `QDRANT_COLLECTION`
 
 ## Related ADRs
 
 - [ADR 002: Storage and Metadata Topology](../docs/adr/002-storage-and-metadata-topology.md)
 - [ADR 005: Document Identity and Ingestion State](../docs/adr/005-document-identity-and-ingestion-state.md)
+- [ADR 007: Retrieval and Answerability](../docs/adr/007-retrieval-and-answerability.md)
 - [ADR 008: Job Coordination and Service Contracts](../docs/adr/008-job-coordination-and-service-contracts.md)
 
 ## Testing Helpers
