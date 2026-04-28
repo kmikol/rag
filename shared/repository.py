@@ -141,6 +141,51 @@ class MetadataRepository:
         )
         return self.get_ingestion_job(job_id)
 
+    def update_document_state(self, document_id: str, state: str) -> dict[str, Any]:
+        """Update the lifecycle state for one logical document."""
+        validate_state(state)
+        self.connection.execute(
+            update(documents)
+            .where(documents.c.id == document_id)
+            .values(state=state, updated_at=utc_now())
+        )
+        return dict(
+            self.connection.execute(select(documents).where(documents.c.id == document_id))
+            .mappings()
+            .one()
+        )
+
+    def update_document_version_state(
+        self,
+        document_version_id: str,
+        state: str,
+        error_message: str | None = None,
+        embedding_model_name: str | None = None,
+        embedding_dimension: int | None = None,
+    ) -> dict[str, Any]:
+        """Update lifecycle and embedding metadata for one document version."""
+        validate_state(state)
+        values: dict[str, Any] = {"state": state}
+        if error_message is not None:
+            values["error_message"] = error_message
+        if embedding_model_name is not None:
+            values["embedding_model_name"] = embedding_model_name
+        if embedding_dimension is not None:
+            values["embedding_dimension"] = embedding_dimension
+
+        self.connection.execute(
+            update(document_versions)
+            .where(document_versions.c.id == document_version_id)
+            .values(values)
+        )
+        return dict(
+            self.connection.execute(
+                select(document_versions).where(document_versions.c.id == document_version_id)
+            )
+            .mappings()
+            .one()
+        )
+
     def find_document_version_by_hash(self, content_hash: str) -> dict[str, Any] | None:
         """Return an existing document version with matching raw-byte SHA-256."""
         row = (

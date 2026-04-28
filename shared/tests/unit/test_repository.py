@@ -103,6 +103,29 @@ def test_document_version_activation_switches_active_version() -> None:
         connection.close()
 
 
+def test_update_document_and_version_state_persists_metadata() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            document = repo.get_or_create_document("/watch/example.md")
+            version = repo.create_document_version(document["id"], "a" * 64)
+
+            updated_document = repo.update_document_state(document["id"], "running")
+            updated_version = repo.update_document_version_state(
+                version["id"],
+                "embedded",
+                embedding_model_name="fake-model",
+                embedding_dimension=8,
+            )
+
+            assert updated_document["state"] == "running"
+            assert updated_version["state"] == "embedded"
+            assert updated_version["embedding_model_name"] == "fake-model"
+            assert updated_version["embedding_dimension"] == 8
+    finally:
+        connection.close()
+
+
 def test_list_documents_returns_active_versions() -> None:
     repo, connection = open_repository()
     try:
