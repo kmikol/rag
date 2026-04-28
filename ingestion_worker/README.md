@@ -6,11 +6,18 @@ The `ingestion-worker` owns background document processing.
 
 The worker claims ingestion jobs, scans configured watch roots, reconciles the index against the filesystem source of truth, parses supported files, chunks text, calls `embedding-service`, and writes metadata/vectors/document copies.
 
-The current implementation exposes the health endpoint plus parser and chunker building blocks. Job claiming, embedding calls, indexing, PostgreSQL writes, and managed document-copy writes are intentionally outside this module slice.
+The current implementation exposes the health endpoint plus filesystem scanning,
+managed-copy, parser, and chunker building blocks. Job claiming, embedding calls,
+indexing, and PostgreSQL writes are intentionally outside this module slice.
 
 ## Responsibilities
 
 - Dispatch supported source files through a parser registry.
+- Discover supported files under configured watch roots.
+- Skip hidden files and directories during scans by default.
+- Follow symlinks during scans with cycle protection.
+- Compute SHA-256 hashes from raw source bytes.
+- Copy originals into a hash-addressed managed document store.
 - Parse Markdown files (`.md`, `.markdown`) into normalized sections with heading paths.
 - Parse PDF files (`.pdf`) into normalized page/paragraph sections.
 - Detect PDFs with no extractable text layer by raising `EmptyScannedPdfError`.
@@ -27,6 +34,28 @@ Implemented:
 | `GET` | `/health` | Service health check |
 
 The worker is primarily job-driven through PostgreSQL-backed job records, not an external public API.
+
+## Filesystem Contract
+
+`ingestion_worker.filesystem` provides:
+
+- `parse_watch_roots()`: parses `WATCH_ROOTS` as an `os.pathsep`-separated
+  path list.
+- `scan_watch_roots()`: recursively discovers parser-supported files and
+  reports missing or unhealthy roots separately.
+- `compute_sha256()`: hashes raw source bytes.
+- `copy_to_managed_store()`: copies originals into
+  `<DOCUMENT_STORE_PATH>/<first-two-hash-chars>/<sha256><lowercase-suffix>`.
+
+Scans skip dot-prefixed files and directories by default. Symlinks are followed,
+and resolved directories/files are tracked so cycles and duplicate discoveries do
+not repeat work. Unhealthy roots are reported in the scan result; deletion
+reconciliation is intentionally out of scope for this module slice.
+
+Managed-copy hashes must be 64-character SHA-256 hex digests. Hash values are
+normalized to lowercase before path construction, existing managed copies are
+verified before reuse, and new copies are written through a temporary file before
+being atomically moved into place.
 
 ## Parser Contract
 
@@ -51,7 +80,7 @@ The chunker accepts a `ParsedDocument`, keeps chunks inside parser section bound
 - `POSTGRES_URL`
 - `QDRANT_URL`
 - `EMBEDDING_SERVICE_URL`
-- `WATCH_ROOTS`
+- `WATCH_ROOTS` (`os.pathsep`-separated when multiple roots are configured)
 - `DOCUMENT_STORE_PATH`
 
 ## Related ADRs
