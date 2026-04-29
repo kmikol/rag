@@ -8,6 +8,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
 
+from api_service.chat import (
+    AnswerabilityConfig,
+    ChatCompletionClient,
+    GenerationError,
+    GroundingConfig,
+    OpenAIChatCompletionClient,
+    assess_answerability,
+    build_grounded_messages,
+    select_grounding_citations,
+)
 from api_service.retrieval import (
     HttpQueryEmbeddingClient,
     QueryEmbeddingClient,
@@ -19,6 +29,8 @@ from shared.config import get_settings
 from shared.logging_config import configure_logging
 from shared.repository import MetadataRepository, create_metadata_engine
 from shared.schemas import (
+    ChatRequest,
+    ChatResponse,
     DocumentListResponse,
     DocumentResponse,
     HealthResponse,
@@ -51,6 +63,18 @@ def get_query_embedding_client() -> QueryEmbeddingClient:
 def get_vector_index() -> VectorIndex:
     """Return the configured Qdrant vector index for retrieval."""
     return QdrantVectorIndex()
+
+
+@lru_cache
+def get_chat_completion_client() -> ChatCompletionClient:
+    """Return the OpenAI-compatible chat client used for grounded answers."""
+    settings = get_settings()
+    return OpenAIChatCompletionClient(
+        base_url=settings.ollama_url,
+        model_name=settings.ollama_generation_model,
+        timeout_seconds=settings.ollama_generation_timeout_seconds,
+        api_key=settings.ollama_api_key,
+    )
 
 
 def open_metadata_repository() -> Iterator[MetadataRepository]:
@@ -129,6 +153,69 @@ def list_documents(
         for row in repository.list_documents()
     ]
     return DocumentListResponse(documents=documents)
+
+
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def chat(
+    request: ChatRequest,
+    repository: Annotated[MetadataRepository, Depends(open_metadata_repository)],
+    embedding_client: Annotated[QueryEmbeddingClient, Depends(get_query_embedding_client)],
+    vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
+    chat_client: Annotated[ChatCompletionClient, Depends(get_chat_completion_client)],
+) -> ChatResponse:
+    settings = get_settings()
+    retriever = SearchRetriever(
+        embedding_client=embedding_client,
+        vector_index=vector_index,
+    )
+    try:
+        citations = retriever.search(request.query, request.limit, repository)
+    except RetrievalError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
+
+    grounding_config = GroundingConfig(
+        max_context_chunks=settings.chat_max_context_chunks,
+        max_chunk_chars=settings.chat_max_chunk_chars,
+    )
+    grounding_citations = select_grounding_citations(citations, grounding_config)
+    refusal_reason = assess_answerability(
+        grounding_citations,
+        AnswerabilityConfig(
+            min_top_score=settings.chat_min_top_score,
+            min_usable_chunks=settings.chat_min_usable_chunks,
+        ),
+    )
+    if refusal_reason is not None:
+        return ChatResponse(
+            answer=None,
+            citations=grounding_citations,
+            refused=True,
+            refusal_reason=refusal_reason,
+        )
+
+    try:
+        answer = chat_client.complete(
+            build_grounded_messages(request.query, grounding_citations, grounding_config)
+        )
+    except GenerationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
+
+    return ChatResponse(
+        answer=answer,
+        citations=grounding_citations,
+        refused=False,
+        refusal_reason=None,
+    )
 
 
 @app.post(
