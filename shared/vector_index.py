@@ -24,7 +24,7 @@ class ChunkVector:
 
 @dataclass(frozen=True)
 class VectorSearchResult:
-    """Dense retrieval result with the payload IDs needed for metadata hydration."""
+    """Dense retrieval result with payload IDs needed to load chunk metadata."""
 
     chunk_id: str
     document_id: str

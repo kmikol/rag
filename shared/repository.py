@@ -345,6 +345,22 @@ class MetadataRepository:
         ).mappings()
         return [dict(row) for row in result]
 
+    def get_active_chunks_by_ids(self, chunk_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Return chunk metadata for ids that belong to active document versions."""
+        if not chunk_ids:
+            return {}
+
+        rows = self.connection.execute(
+            select(chunks)
+            .join(
+                documents,
+                (documents.c.id == chunks.c.document_id)
+                & (documents.c.active_document_version_id == chunks.c.document_version_id),
+            )
+            .where(chunks.c.id.in_(chunk_ids))
+        ).mappings()
+        return {str(row["id"]): dict(row) for row in rows}
+
     def get_document_with_active_version(self, document_id: str) -> dict[str, Any]:
         """Return a document and its active version metadata."""
         document = (

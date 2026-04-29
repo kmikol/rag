@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -60,3 +60,27 @@ class DocumentResponse(BaseModel):
 
 class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=10, ge=1, le=100)
+
+
+class SearchResult(BaseModel):
+    score: float
+    text: str
+    document_id: str
+    document_version_id: str
+    chunk_id: str
+    source_path: str
+    original_filename: str
+    page_number: int | None
+    heading_path: list[str] | None
+    section_title: str | None
+    start_offset: int | None
+    end_offset: int | None
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult]

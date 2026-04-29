@@ -5,7 +5,9 @@ import httpx
 from alembic import command
 from alembic.config import Config
 
-from shared.repository import MetadataRepository, create_metadata_engine
+from embedding_service.testing.mocks import make_fake_embedding
+from shared.repository import ChunkRecord, MetadataRepository, create_metadata_engine
+from shared.vector_index import ChunkVector, QdrantVectorIndex
 
 
 def upgrade_database() -> None:
@@ -75,3 +77,68 @@ def test_documents_endpoint_lists_metadata_backed_documents() -> None:
     listed = next(document for document in documents if document["source_path"] == source_path)
     assert listed["id"] == document["id"]
     assert listed["active_version"]["id"] == version["id"]
+
+
+def test_search_endpoint_returns_qdrant_backed_citations() -> None:
+    upgrade_database()
+    base_url = os.environ["API_SERVICE_URL"]
+    query = f"searchable integration phrase {uuid4().hex}"
+    unique = uuid4().hex
+    source_path = f"/watch/{unique}.md"
+
+    engine = create_metadata_engine(os.environ["POSTGRES_URL"])
+    vector_index = QdrantVectorIndex(url=os.environ["QDRANT_URL"])
+    vector_index.ensure_collection(8)
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document(source_path)
+        version = repository.create_document_version(document["id"], f"{unique}{unique}")
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Integration search result",
+                    source_path=source_path,
+                    original_filename=f"{unique}.md",
+                    page_number=2,
+                    heading_path=["Integration"],
+                    section_title="Integration",
+                    start_offset=0,
+                    end_offset=25,
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    try:
+        vector_index.upsert_chunks(
+            [
+                ChunkVector(
+                    chunk_id=chunks[0]["id"],
+                    document_id=document["id"],
+                    document_version_id=version["id"],
+                    vector=make_fake_embedding(query, 8),
+                )
+            ]
+        )
+
+        response = httpx.post(
+            f"{base_url}/search",
+            json={"query": query, "limit": 1},
+            headers=auth_headers(),
+            timeout=5,
+        )
+
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert len(results) == 1
+        assert results[0]["chunk_id"] == chunks[0]["id"]
+        assert results[0]["document_id"] == document["id"]
+        assert results[0]["document_version_id"] == version["id"]
+        assert results[0]["source_path"] == source_path
+        assert results[0]["page_number"] == 2
+        assert results[0]["heading_path"] == ["Integration"]
+    finally:
+        vector_index.delete_by_document_id(document["id"])
