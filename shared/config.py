@@ -26,6 +26,12 @@ class AppSettings(BaseSettings):
     embedding_dimension: int = Field(default=8, alias="EMBEDDING_DIMENSION")
     ollama_embed_timeout_seconds: int = Field(default=30, alias="OLLAMA_EMBED_TIMEOUT_SECONDS")
     ollama_keep_alive: str = Field(default="5m", alias="OLLAMA_KEEP_ALIVE")
+    ollama_generation_model: str = Field(default="gemma3:4b", alias="OLLAMA_GENERATION_MODEL")
+    ollama_generation_timeout_seconds: int = Field(
+        default=120, alias="OLLAMA_GENERATION_TIMEOUT_SECONDS"
+    )
+    chat_min_top_score: float = Field(default=0.5, ge=0, le=1, alias="CHAT_MIN_TOP_SCORE")
+    chat_min_usable_chunks: int = Field(default=1, ge=1, alias="CHAT_MIN_USABLE_CHUNKS")
 
 
 @lru_cache

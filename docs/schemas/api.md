@@ -15,11 +15,18 @@ Search schemas:
 | `SearchResponse` | Search response containing ranked `results` |
 | `SearchResult` | Citation-ready chunk result with score, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
 
+Chat schemas:
+
+| Schema | Purpose |
+|--------|---------|
+| `ChatRequest` | Request body for `POST /chat`: non-empty `query`, optional `limit` from 1 through 100 defaulting to 10 |
+| `ChatResponse` | Stable chat response containing `answer`, `citations`, `refused`, and optional `refusal_reason` |
+
 Minimum planned API surface:
 
 | Service | Endpoint | Purpose |
 |---------|----------|---------|
-| `api-service` | `POST /chat` | Chat with retrieved grounding context |
+| `api-service` | `POST /chat` | Chat with retrieved grounding context and answerability refusal |
 | `api-service` | `POST /search` | Retrieve dense ranked results without generation |
 | `api-service` | `POST /ingest` | Create an ingestion job |
 | `api-service` | `GET /ingest/{job_id}` | Inspect ingestion job status |

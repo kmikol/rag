@@ -6,8 +6,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 
+from api_service.chat import GenerationError
 from api_service.main import (
     app,
+    get_chat_completion_client,
     get_metadata_engine,
     get_query_embedding_client,
     get_vector_index,
@@ -50,6 +52,7 @@ def client(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
+        get_chat_completion_client.cache_clear()
         get_metadata_engine.cache_clear()
 
 
@@ -92,6 +95,18 @@ class FakeVectorIndex:
         return self.results
 
 
+class FakeChatCompletionClient:
+    def __init__(self) -> None:
+        self.messages: list[list[dict[str, str]]] = []
+        self.error: GenerationError | None = None
+
+    def complete(self, messages: list[dict[str, str]]) -> str:
+        self.messages.append(messages)
+        if self.error is not None:
+            raise self.error
+        return "Alpha is answered from the retrieved context [1]."
+
+
 def test_protected_endpoints_require_api_key(client: TestClient) -> None:
     response = client.post("/ingest")
 
@@ -104,10 +119,27 @@ def test_search_requires_api_key(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_chat_requires_api_key(client: TestClient) -> None:
+    response = client.post("/chat", json={"query": "example"})
+
+    assert response.status_code == 401
+
+
 @pytest.mark.parametrize("limit", [0, -1, 101])
 def test_search_rejects_invalid_limit(client: TestClient, limit: int) -> None:
     response = client.post(
         "/search",
+        json={"query": "example", "limit": limit},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("limit", [0, -1, 101])
+def test_chat_rejects_invalid_limit(client: TestClient, limit: int) -> None:
+    response = client.post(
+        "/chat",
         json={"query": "example", "limit": limit},
         headers=auth_headers(),
     )
@@ -235,6 +267,210 @@ def test_search_returns_citation_ready_chunks(
             "end_offset": 23,
         }
     ]
+
+
+def test_chat_returns_grounded_answer_with_citations(
+    client: TestClient,
+    engine: Engine,
+) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document("/watch/example.md")
+        version = repository.create_document_version(document["id"], "a" * 64)
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Alpha content",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                    page_number=3,
+                    heading_path=["Root", "Alpha"],
+                    section_title="Alpha",
+                    start_offset=10,
+                    end_offset=23,
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    vector_index.results = [
+        VectorSearchResult(
+            chunk_id=chunks[0]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.92,
+        )
+    ]
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha", "limit": 5},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert embedding_client.queries == ["alpha"]
+    assert vector_index.limit == 5
+    assert len(chat_client.messages) == 1
+    messages = chat_client.messages[0]
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert "Alpha content" in messages[1]["content"]
+    body = response.json()
+    assert body["answer"] == "Alpha is answered from the retrieved context [1]."
+    assert body["refused"] is False
+    assert body["refusal_reason"] is None
+    assert body["citations"][0]["chunk_id"] == chunks[0]["id"]
+
+
+def test_chat_refuses_when_retrieval_is_empty(client: TestClient) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert chat_client.messages == []
+    assert response.json() == {
+        "answer": None,
+        "citations": [],
+        "refused": True,
+        "refusal_reason": "Retrieved evidence is insufficient to answer reliably.",
+    }
+
+
+def test_chat_refuses_when_top_score_is_too_low(
+    client: TestClient,
+    engine: Engine,
+) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document("/watch/example.md")
+        version = repository.create_document_version(document["id"], "a" * 64)
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Low confidence content",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    vector_index.results = [
+        VectorSearchResult(
+            chunk_id=chunks[0]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.1,
+        )
+    ]
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert chat_client.messages == []
+    body = response.json()
+    assert body["answer"] is None
+    assert body["refused"] is True
+    assert body["refusal_reason"] == "Top retrieved evidence is below the answerability threshold."
+    assert body["citations"][0]["chunk_id"] == chunks[0]["id"]
+
+
+def test_chat_returns_bad_gateway_for_retrieval_failure(client: TestClient) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    embedding_client.error = RetrievalError("Embedding service unavailable: refused")
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: FakeVectorIndex()
+    app.dependency_overrides[get_chat_completion_client] = lambda: FakeChatCompletionClient()
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Embedding service unavailable: refused"
+
+
+def test_chat_returns_bad_gateway_for_generation_failure(
+    client: TestClient,
+    engine: Engine,
+) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+    chat_client.error = GenerationError("Ollama chat response missing choices.")
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document("/watch/example.md")
+        version = repository.create_document_version(document["id"], "a" * 64)
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Alpha content",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    vector_index.results = [
+        VectorSearchResult(
+            chunk_id=chunks[0]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.92,
+        )
+    ]
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Ollama chat response missing choices."
 
 
 def test_search_returns_empty_results_when_vector_search_is_empty(client: TestClient) -> None:

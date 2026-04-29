@@ -4,7 +4,7 @@ The `api-service` is the public application boundary for the personal RAG system
 
 ## Purpose
 
-The service owns API key authentication, interactive chat/search endpoints, document management endpoints, ingestion-control endpoints, retrieval orchestration, answerability checks, and streaming generation.
+The service owns API key authentication, interactive chat/search endpoints, document management endpoints, ingestion-control endpoints, retrieval orchestration, answerability checks, and generation.
 
 Retrieval and generation remain internal modules inside this service for the first implementation. They should still be written behind clear interfaces so they can become separate services later if load or deployment placement requires it.
 
@@ -18,16 +18,17 @@ Implemented in this skeleton:
 | `POST` | `/ingest` | Create an ingestion job |
 | `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
 | `GET` | `/documents` | List ingested documents |
+| `POST` | `/chat` | Generate or refuse an answer from retrieved chunks |
 | `POST` | `/search` | Return dense retrieval results with citation metadata |
 
 Planned:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/chat` | Generate an answer grounded in retrieved chunks |
 | `DELETE` | `/documents/{id}` | Delete a document from the corpus |
 
-The ingestion and document endpoints require `Authorization: Bearer <RAG_API_KEY>`.
+The chat, search, ingestion, and document endpoints require
+`Authorization: Bearer <RAG_API_KEY>`.
 `POST /ingest` accepts an optional `requested_path` JSON field for single-file
 ingestion; omitting it creates a full-scan job.
 
@@ -38,6 +39,22 @@ collection, loads active chunk metadata from PostgreSQL, and returns ranked
 results with citation fields. Sparse PostgreSQL full-text search is not wired
 yet because the current schema has no FTS index support.
 
+`POST /chat` accepts the same non-empty `query` string and optional `limit`
+integer as search. It runs retrieval first, applies configurable answerability
+gates, and refuses without calling generation when evidence is too weak. When
+retrieval passes the gates, it sends a non-streaming OpenAI-compatible chat
+completion request to Ollama at `{OLLAMA_URL}/v1/chat/completions` using the
+configured generation model. The response always uses the same shape:
+
+```json
+{
+  "answer": "Grounded answer text, or null when refused",
+  "citations": [],
+  "refused": false,
+  "refusal_reason": null
+}
+```
+
 ## Configuration
 
 The service reads configuration from environment variables:
@@ -47,6 +64,10 @@ The service reads configuration from environment variables:
 - `QDRANT_URL`
 - `EMBEDDING_SERVICE_URL`
 - `OLLAMA_URL`
+- `OLLAMA_GENERATION_MODEL`
+- `OLLAMA_GENERATION_TIMEOUT_SECONDS`
+- `CHAT_MIN_TOP_SCORE`
+- `CHAT_MIN_USABLE_CHUNKS`
 - `WATCH_ROOTS`
 - `DOCUMENT_STORE_PATH`
 

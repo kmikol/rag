@@ -84,3 +84,15 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SearchResult]
+
+
+class ChatRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=10, ge=1, le=100)
+
+
+class ChatResponse(BaseModel):
+    answer: str | None
+    citations: list[SearchResult]
+    refused: bool
+    refusal_reason: str | None = None
