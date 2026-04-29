@@ -28,7 +28,15 @@ class QueryEmbeddingClient(Protocol):
         """Embed a user query for retrieval."""
 
 
+class ReadableResponse(Protocol):
+    def read(self) -> bytes:
+        """Read the raw response body bytes."""
+
+
 class VectorIndex(Protocol):
+    def ensure_collection(self, dimension: int) -> None:
+        """Create or verify the vector collection for the embedding dimension."""
+
     def search(self, query_vector: list[float], limit: int) -> list[VectorSearchResult]:
         """Return ranked dense retrieval candidates."""
 
@@ -51,9 +59,9 @@ class HttpQueryEmbeddingClient:
         )
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
+                body = _read_json_response(response)
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8")
+            detail = _read_http_error_detail(exc)
             raise RetrievalError(f"Embedding service HTTP error: {detail}") from exc
         except error.URLError as exc:
             raise RetrievalError(f"Embedding service unavailable: {exc.reason}") from exc
@@ -86,7 +94,13 @@ class SearchRetriever:
     ) -> list[SearchResult]:
         """Return citation-ready results ranked by dense vector search score."""
         embedding = self.embedding_client.embed_query(query)
-        dense_results = self.vector_index.search(embedding.embedding, limit)
+        try:
+            self.vector_index.ensure_collection(embedding.dimension)
+            dense_results = self.vector_index.search(embedding.embedding, limit)
+        except RetrievalError:
+            raise
+        except Exception as exc:
+            raise RetrievalError("Vector index search failed.") from exc
         chunks_by_id = repository.get_active_chunks_by_ids(
             [result.chunk_id for result in dense_results]
         )
@@ -113,6 +127,27 @@ class SearchRetriever:
                 )
             )
         return results
+
+
+def _read_json_response(response: ReadableResponse) -> dict[str, object]:
+    try:
+        raw_body = response.read()
+        if not isinstance(raw_body, bytes):
+            raise RetrievalError("Embedding service returned a non-bytes response.")
+        body = json.loads(raw_body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RetrievalError("Embedding service returned an invalid JSON response.") from exc
+
+    if not isinstance(body, dict):
+        raise RetrievalError("Embedding service returned a non-object response.")
+    return body
+
+
+def _read_http_error_detail(exc: error.HTTPError) -> str:
+    try:
+        return exc.read().decode("utf-8")
+    except UnicodeDecodeError:
+        return "<non-UTF-8 response body>"
 
 
 def _required_str(body: dict[str, object], key: str) -> str:

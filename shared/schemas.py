@@ -64,7 +64,7 @@ class DocumentListResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
-    limit: int = 10
+    limit: int = Field(default=10, ge=1, le=100)
 
 
 class SearchResult(BaseModel):

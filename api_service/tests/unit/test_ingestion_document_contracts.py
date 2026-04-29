@@ -76,10 +76,17 @@ class FakeQueryEmbeddingClient:
 class FakeVectorIndex:
     def __init__(self) -> None:
         self.results: list[VectorSearchResult] = []
+        self.ensured_dimensions: list[int] = []
         self.query_vector: list[float] | None = None
         self.limit: int | None = None
+        self.error: RuntimeError | None = None
+
+    def ensure_collection(self, dimension: int) -> None:
+        self.ensured_dimensions.append(dimension)
 
     def search(self, query_vector: list[float], limit: int) -> list[VectorSearchResult]:
+        if self.error is not None:
+            raise self.error
         self.query_vector = query_vector
         self.limit = limit
         return self.results
@@ -95,6 +102,17 @@ def test_search_requires_api_key(client: TestClient) -> None:
     response = client.post("/search", json={"query": "example"})
 
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("limit", [0, -1, 101])
+def test_search_rejects_invalid_limit(client: TestClient, limit: int) -> None:
+    response = client.post(
+        "/search",
+        json={"query": "example", "limit": limit},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
 
 
 def test_post_ingest_creates_pending_job(client: TestClient) -> None:
@@ -197,6 +215,7 @@ def test_search_returns_citation_ready_chunks(
 
     assert response.status_code == 200
     assert embedding_client.queries == ["alpha"]
+    assert vector_index.ensured_dimensions == [3]
     assert vector_index.query_vector == [1.0, 0.0, 0.0]
     assert vector_index.limit == 5
     body = response.json()
@@ -314,3 +333,20 @@ def test_search_returns_bad_gateway_for_embedding_failure(client: TestClient) ->
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Embedding service unavailable: refused"
+
+
+def test_search_returns_bad_gateway_for_vector_index_failure(client: TestClient) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    vector_index.error = RuntimeError("qdrant unavailable")
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.post(
+        "/search",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Vector index search failed."

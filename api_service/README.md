@@ -31,7 +31,8 @@ The ingestion and document endpoints require `Authorization: Bearer <RAG_API_KEY
 `POST /ingest` accepts an optional `requested_path` JSON field for single-file
 ingestion; omitting it creates a full-scan job.
 
-`POST /search` accepts a non-empty `query` string and optional `limit` integer.
+`POST /search` accepts a non-empty `query` string and optional `limit` integer
+from 1 through 100.
 It embeds the query through `embedding-service`, searches the configured Qdrant
 collection, loads active chunk metadata from PostgreSQL, and returns ranked
 results with citation fields. Sparse PostgreSQL full-text search is not wired

@@ -5,7 +5,7 @@ import httpx
 from alembic import command
 from alembic.config import Config
 
-from embedding_service.main import fake_embedding
+from embedding_service.testing.mocks import make_fake_embedding
 from shared.repository import ChunkRecord, MetadataRepository, create_metadata_engine
 from shared.vector_index import ChunkVector, QdrantVectorIndex
 
@@ -119,7 +119,7 @@ def test_search_endpoint_returns_qdrant_backed_citations() -> None:
                     chunk_id=chunks[0]["id"],
                     document_id=document["id"],
                     document_version_id=version["id"],
-                    vector=fake_embedding(query, 8),
+                    vector=make_fake_embedding(query, 8),
                 )
             ]
         )

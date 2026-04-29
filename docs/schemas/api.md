@@ -11,7 +11,7 @@ Search schemas:
 
 | Schema | Purpose |
 |--------|---------|
-| `SearchRequest` | Request body for `POST /search`: non-empty `query`, optional `limit` defaulting to 10 |
+| `SearchRequest` | Request body for `POST /search`: non-empty `query`, optional `limit` from 1 through 100 defaulting to 10 |
 | `SearchResponse` | Search response containing ranked `results` |
 | `SearchResult` | Citation-ready chunk result with score, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
 
