@@ -30,8 +30,11 @@ class AppSettings(BaseSettings):
     ollama_generation_timeout_seconds: int = Field(
         default=120, alias="OLLAMA_GENERATION_TIMEOUT_SECONDS"
     )
+    ollama_api_key: str | None = Field(default=None, alias="OLLAMA_API_KEY")
     chat_min_top_score: float = Field(default=0.5, ge=0, le=1, alias="CHAT_MIN_TOP_SCORE")
     chat_min_usable_chunks: int = Field(default=1, ge=1, alias="CHAT_MIN_USABLE_CHUNKS")
+    chat_max_context_chunks: int = Field(default=5, ge=1, le=100, alias="CHAT_MAX_CONTEXT_CHUNKS")
+    chat_max_chunk_chars: int = Field(default=2000, ge=1, alias="CHAT_MAX_CHUNK_CHARS")
 
 
 @lru_cache

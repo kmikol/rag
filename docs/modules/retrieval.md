@@ -19,8 +19,10 @@ strategy.
 configurable answerability gates and refuses without calling Ollama when the
 retrieved evidence is too weak. The initial gates check the top retrieved score
 and the minimum number of usable chunks. When the gates pass, `api-service`
-calls Ollama through its OpenAI-compatible `/v1/chat/completions` endpoint and
-returns the generated answer with the retrieved chunk citations.
+caps the grounding context to a configured number of chunks, truncates chunk
+text in the prompt, calls Ollama through its OpenAI-compatible
+`/v1/chat/completions` endpoint, and returns the generated answer with the
+grounding chunk citations.
 
 Related decisions:
 

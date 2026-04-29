@@ -44,7 +44,9 @@ integer as search. It runs retrieval first, applies configurable answerability
 gates, and refuses without calling generation when evidence is too weak. When
 retrieval passes the gates, it sends a non-streaming OpenAI-compatible chat
 completion request to Ollama at `{OLLAMA_URL}/v1/chat/completions` using the
-configured generation model. The response always uses the same shape:
+configured generation model. The prompt uses only the top configured number of
+retrieved chunks and truncates chunk text in the prompt without changing stored
+citations. The response always uses the same shape:
 
 ```json
 {
@@ -66,8 +68,11 @@ The service reads configuration from environment variables:
 - `OLLAMA_URL`
 - `OLLAMA_GENERATION_MODEL`
 - `OLLAMA_GENERATION_TIMEOUT_SECONDS`
+- `OLLAMA_API_KEY` (optional; omitted by default for local Ollama)
 - `CHAT_MIN_TOP_SCORE`
 - `CHAT_MIN_USABLE_CHUNKS`
+- `CHAT_MAX_CONTEXT_CHUNKS`
+- `CHAT_MAX_CHUNK_CHARS`
 - `WATCH_ROOTS`
 - `DOCUMENT_STORE_PATH`
 

@@ -13,8 +13,11 @@ def test_settings_defaults_are_usable() -> None:
     assert settings.ollama_keep_alive == "5m"
     assert settings.ollama_generation_model == "gemma3:4b"
     assert settings.ollama_generation_timeout_seconds == 120
+    assert settings.ollama_api_key is None
     assert settings.chat_min_top_score == 0.5
     assert settings.chat_min_usable_chunks == 1
+    assert settings.chat_max_context_chunks == 5
+    assert settings.chat_max_chunk_chars == 2000
 
 
 def test_settings_read_aliases(monkeypatch) -> None:
@@ -24,10 +27,13 @@ def test_settings_read_aliases(monkeypatch) -> None:
     monkeypatch.setenv("OLLAMA_EMBED_TIMEOUT_SECONDS", "60")
     monkeypatch.setenv("OLLAMA_GENERATION_MODEL", "test-chat-model")
     monkeypatch.setenv("OLLAMA_GENERATION_TIMEOUT_SECONDS", "90")
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-api-key")
     monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "10m")
     monkeypatch.setenv("QDRANT_COLLECTION", "test_chunks")
     monkeypatch.setenv("CHAT_MIN_TOP_SCORE", "0.75")
     monkeypatch.setenv("CHAT_MIN_USABLE_CHUNKS", "2")
+    monkeypatch.setenv("CHAT_MAX_CONTEXT_CHUNKS", "3")
+    monkeypatch.setenv("CHAT_MAX_CHUNK_CHARS", "400")
 
     settings = AppSettings()
 
@@ -38,6 +44,9 @@ def test_settings_read_aliases(monkeypatch) -> None:
     assert settings.ollama_embed_timeout_seconds == 60
     assert settings.ollama_generation_model == "test-chat-model"
     assert settings.ollama_generation_timeout_seconds == 90
+    assert settings.ollama_api_key == "test-api-key"
     assert settings.ollama_keep_alive == "10m"
     assert settings.chat_min_top_score == 0.75
     assert settings.chat_min_usable_chunks == 2
+    assert settings.chat_max_context_chunks == 3
+    assert settings.chat_max_chunk_chars == 400

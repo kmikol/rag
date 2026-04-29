@@ -332,6 +332,92 @@ def test_chat_returns_grounded_answer_with_citations(
     assert body["citations"][0]["chunk_id"] == chunks[0]["id"]
 
 
+def test_chat_uses_capped_grounding_context(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHAT_MAX_CONTEXT_CHUNKS", "2")
+    monkeypatch.setenv("CHAT_MAX_CHUNK_CHARS", "6")
+    get_settings.cache_clear()
+
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document("/watch/example.md")
+        version = repository.create_document_version(document["id"], "a" * 64)
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="First chunk text stays complete in response",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                ),
+                ChunkRecord(
+                    text="Second chunk text is also returned complete",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                ),
+                ChunkRecord(
+                    text="Third chunk should not be grounded",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                ),
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    vector_index.results = [
+        VectorSearchResult(
+            chunk_id=chunks[0]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.95,
+        ),
+        VectorSearchResult(
+            chunk_id=chunks[1]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.9,
+        ),
+        VectorSearchResult(
+            chunk_id=chunks[2]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.85,
+        ),
+    ]
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha", "limit": 3},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    prompt = chat_client.messages[0][1]["content"]
+    assert "First " in prompt
+    assert "First chunk" not in prompt
+    assert "Second" in prompt
+    assert "Second chunk" not in prompt
+    assert chunks[2]["id"] not in prompt
+
+    body = response.json()
+    assert [citation["chunk_id"] for citation in body["citations"]] == [
+        chunks[0]["id"],
+        chunks[1]["id"],
+    ]
+    assert body["citations"][0]["text"] == "First chunk text stays complete in response"
+
+
 def test_chat_refuses_when_retrieval_is_empty(client: TestClient) -> None:
     embedding_client = FakeQueryEmbeddingClient()
     vector_index = FakeVectorIndex()

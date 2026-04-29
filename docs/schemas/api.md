@@ -11,6 +11,7 @@ Search schemas:
 
 | Schema | Purpose |
 |--------|---------|
+| `QueryLimitRequest` | Shared base request fields for query endpoints: non-empty `query`, optional `limit` from 1 through 100 defaulting to 10 |
 | `SearchRequest` | Request body for `POST /search`: non-empty `query`, optional `limit` from 1 through 100 defaulting to 10 |
 | `SearchResponse` | Search response containing ranked `results` |
 | `SearchResult` | Citation-ready chunk result with score, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
@@ -19,8 +20,8 @@ Chat schemas:
 
 | Schema | Purpose |
 |--------|---------|
-| `ChatRequest` | Request body for `POST /chat`: non-empty `query`, optional `limit` from 1 through 100 defaulting to 10 |
-| `ChatResponse` | Stable chat response containing `answer`, `citations`, `refused`, and optional `refusal_reason` |
+| `ChatRequest` | Request body for `POST /chat`, using the shared query and limit fields |
+| `ChatResponse` | Stable chat response containing `answer`, `citations`, `refused`, and optional `refusal_reason`; validation enforces answered/refused state consistency |
 
 Minimum planned API surface:
 

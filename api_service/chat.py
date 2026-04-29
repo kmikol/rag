@@ -25,6 +25,14 @@ class AnswerabilityConfig:
     min_usable_chunks: int
 
 
+@dataclass(frozen=True)
+class GroundingConfig:
+    """Limits that keep chat prompts within a bounded context size."""
+
+    max_context_chunks: int
+    max_chunk_chars: int
+
+
 class ReadableResponse(Protocol):
     def read(self) -> bytes:
         """Read the raw response body bytes."""
@@ -38,12 +46,12 @@ class OpenAIChatCompletionClient:
         base_url: str,
         model_name: str,
         timeout_seconds: int,
-        api_key: str = "ollama",
+        api_key: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
-        self.api_key = api_key
+        self.api_key = api_key.strip() if api_key else None
 
     def complete(self, messages: list[dict[str, str]]) -> str:
         """Generate one non-streaming chat completion."""
@@ -54,13 +62,14 @@ class OpenAIChatCompletionClient:
                 "stream": False,
             }
         ).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         req = request.Request(
             url=f"{self.base_url}/v1/chat/completions",
             data=payload,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
         try:
@@ -87,7 +96,19 @@ def assess_answerability(
     return None
 
 
-def build_grounded_messages(query: str, citations: list[SearchResult]) -> list[dict[str, str]]:
+def select_grounding_citations(
+    citations: list[SearchResult],
+    config: GroundingConfig,
+) -> list[SearchResult]:
+    """Return the top-ranked citations that may be used as generation context."""
+    return citations[: config.max_context_chunks]
+
+
+def build_grounded_messages(
+    query: str,
+    citations: list[SearchResult],
+    config: GroundingConfig,
+) -> list[dict[str, str]]:
     """Build a compact grounded chat prompt with citation boundaries."""
     context_blocks = []
     for index, citation in enumerate(citations, start=1):
@@ -104,7 +125,7 @@ def build_grounded_messages(query: str, citations: list[SearchResult]) -> list[d
                 [
                     f"[{index}] chunk_id={citation.chunk_id}",
                     f"source={'; '.join(location_parts)}",
-                    citation.text,
+                    citation.text[: config.max_chunk_chars],
                 ]
             )
         )

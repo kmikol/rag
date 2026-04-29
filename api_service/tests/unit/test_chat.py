@@ -50,7 +50,28 @@ def test_openai_chat_client_posts_chat_completions_payload(
     assert captured["timeout"] == 120
     assert b'"model": "gemma3:4b"' in captured["body"]
     assert b'"stream": false' in captured["body"]
-    assert captured["headers"]["Authorization"] == "Bearer ollama"
+    assert "Authorization" not in captured["headers"]
+
+
+def test_openai_chat_client_sends_configured_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(req: Any, timeout: int) -> FakeResponse:
+        captured["headers"] = dict(req.header_items())
+        return FakeResponse(b'{"choices":[{"message":{"content":"Grounded answer [1]."}}]}')
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    OpenAIChatCompletionClient(
+        "http://ollama:11434",
+        model_name="gemma3:4b",
+        timeout_seconds=120,
+        api_key="secret-token",
+    ).complete([{"role": "user", "content": "hello"}])
+
+    assert captured["headers"]["Authorization"] == "Bearer secret-token"
 
 
 def test_openai_chat_client_rejects_invalid_json_response(

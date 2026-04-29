@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class HealthResponse(BaseModel):
@@ -62,9 +62,13 @@ class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
 
 
-class SearchRequest(BaseModel):
+class QueryLimitRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=100)
+
+
+class SearchRequest(QueryLimitRequest):
+    pass
 
 
 class SearchResult(BaseModel):
@@ -86,9 +90,8 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
 
 
-class ChatRequest(BaseModel):
-    query: str = Field(min_length=1)
-    limit: int = Field(default=10, ge=1, le=100)
+class ChatRequest(QueryLimitRequest):
+    pass
 
 
 class ChatResponse(BaseModel):
@@ -96,3 +99,17 @@ class ChatResponse(BaseModel):
     citations: list[SearchResult]
     refused: bool
     refusal_reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_state(self) -> Self:
+        if self.refused:
+            if self.answer is not None:
+                raise ValueError("Refused chat responses must not include an answer.")
+            if not self.refusal_reason:
+                raise ValueError("Refused chat responses must include a refusal reason.")
+        else:
+            if not self.answer:
+                raise ValueError("Answered chat responses must include an answer.")
+            if self.refusal_reason is not None:
+                raise ValueError("Answered chat responses must not include a refusal reason.")
+        return self

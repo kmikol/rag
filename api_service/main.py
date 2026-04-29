@@ -12,9 +12,11 @@ from api_service.chat import (
     AnswerabilityConfig,
     ChatCompletionClient,
     GenerationError,
+    GroundingConfig,
     OpenAIChatCompletionClient,
     assess_answerability,
     build_grounded_messages,
+    select_grounding_citations,
 )
 from api_service.retrieval import (
     HttpQueryEmbeddingClient,
@@ -71,6 +73,7 @@ def get_chat_completion_client() -> ChatCompletionClient:
         base_url=settings.ollama_url,
         model_name=settings.ollama_generation_model,
         timeout_seconds=settings.ollama_generation_timeout_seconds,
+        api_key=settings.ollama_api_key,
     )
 
 
@@ -177,8 +180,13 @@ def chat(
             detail=str(error),
         ) from error
 
+    grounding_config = GroundingConfig(
+        max_context_chunks=settings.chat_max_context_chunks,
+        max_chunk_chars=settings.chat_max_chunk_chars,
+    )
+    grounding_citations = select_grounding_citations(citations, grounding_config)
     refusal_reason = assess_answerability(
-        citations,
+        grounding_citations,
         AnswerabilityConfig(
             min_top_score=settings.chat_min_top_score,
             min_usable_chunks=settings.chat_min_usable_chunks,
@@ -187,13 +195,15 @@ def chat(
     if refusal_reason is not None:
         return ChatResponse(
             answer=None,
-            citations=citations,
+            citations=grounding_citations,
             refused=True,
             refusal_reason=refusal_reason,
         )
 
     try:
-        answer = chat_client.complete(build_grounded_messages(request.query, citations))
+        answer = chat_client.complete(
+            build_grounded_messages(request.query, grounding_citations, grounding_config)
+        )
     except GenerationError as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -202,7 +212,7 @@ def chat(
 
     return ChatResponse(
         answer=answer,
-        citations=citations,
+        citations=grounding_citations,
         refused=False,
         refusal_reason=None,
     )
