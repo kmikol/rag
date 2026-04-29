@@ -39,6 +39,7 @@ def engine() -> Iterator[Engine]:
 @pytest.fixture
 def client(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("RAG_API_KEY", "unit-token")
+    monkeypatch.setenv("EMBEDDING_MODEL_NAME", "fake-model")
     get_settings.cache_clear()
     get_metadata_engine.cache_clear()
 
@@ -71,7 +72,7 @@ class FakeQueryEmbeddingClient:
             raise self.error
         return QueryEmbedding(
             embedding=[1.0, 0.0, 0.0],
-            model_name="fake-model",
+            embedding_model_name="fake-model",
             dimension=3,
         )
 
@@ -100,7 +101,7 @@ class FakeChatCompletionClient:
         self.messages: list[list[dict[str, str]]] = []
         self.error: GenerationError | None = None
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(self, messages: list[dict[str, str]], options: object | None = None) -> str:
         self.messages.append(messages)
         if self.error is not None:
             raise self.error
@@ -123,6 +124,24 @@ def test_chat_requires_api_key(client: TestClient) -> None:
     response = client.post("/chat", json={"query": "example"})
 
     assert response.status_code == 401
+
+
+def test_chat_returns_config_error_for_unsupported_llm_provider(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "unsupported")
+    get_settings.cache_clear()
+    get_chat_completion_client.cache_clear()
+
+    response = client.post(
+        "/chat",
+        json={"query": "alpha"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unsupported LLM provider: unsupported"
 
 
 @pytest.mark.parametrize("limit", [0, -1, 101])
@@ -518,7 +537,7 @@ def test_chat_returns_bad_gateway_for_generation_failure(
     embedding_client = FakeQueryEmbeddingClient()
     vector_index = FakeVectorIndex()
     chat_client = FakeChatCompletionClient()
-    chat_client.error = GenerationError("Ollama chat response missing choices.")
+    chat_client.error = GenerationError("LLM chat response missing choices.")
 
     with engine.begin() as connection:
         repository = MetadataRepository(connection)
@@ -556,7 +575,7 @@ def test_chat_returns_bad_gateway_for_generation_failure(
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Ollama chat response missing choices."
+    assert response.json()["detail"] == "LLM chat response missing choices."
 
 
 def test_search_returns_empty_results_when_vector_search_is_empty(client: TestClient) -> None:

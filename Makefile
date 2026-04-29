@@ -6,6 +6,7 @@ GREEN  := \033[32m
 RESET  := \033[0m
 
 TEST_COMPOSE := docker compose -f docker-compose.test.yml
+E2E_COMPOSE := docker compose -f docker-compose.e2e.yml
 
 .PHONY: help
 help: ## Show this help
@@ -35,7 +36,7 @@ docs.serve.online: ## Build and deploy docs to GitHub Pages (gh-pages branch)
 # DEVELOPMENT
 # ═══════════════════════════════════════════════════════════════
 
-.PHONY: build up down lint lint.fix format typecheck pre-commit.install pre-commit.run db.upgrade db.downgrade db.revision test test.unit test.integration test.smoke
+.PHONY: build up down lint lint.fix format typecheck pre-commit.install pre-commit.run db.upgrade db.downgrade db.revision test test.unit test.integration test.e2e test.smoke
 
 build: ## Build local Docker images
 	docker compose build
@@ -100,6 +101,13 @@ test.integration: ## Run integration tests in Docker
 		-v; \
 	EXIT=$$?; \
 	$(TEST_COMPOSE) down -v; \
+	exit $$EXIT
+
+test.e2e: ## Run provider-backed end-to-end RAG tests in Docker
+	@test -n "$$GEMINI_API_KEY_E2E_TEST" || (echo "GEMINI_API_KEY_E2E_TEST is required for test.e2e"; exit 2)
+	$(E2E_COMPOSE) run --build --rm test; \
+	EXIT=$$?; \
+	$(E2E_COMPOSE) down -v; \
 	exit $$EXIT
 
 test.smoke: ## Run smoke tests locally

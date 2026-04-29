@@ -42,7 +42,6 @@ services:
       - config/env/api-service.env
     environment:
       RAG_API_KEY: test-token
-      OLLAMA_URL: http://ollama:11434
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +58,6 @@ services:
       - config/env/ingestion-worker.env
     environment:
       RAG_API_KEY: test-token
-      OLLAMA_URL: http://ollama:11434
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +81,7 @@ services:
       API_SERVICE_URL: http://api-service:8000
       INGESTION_WORKER_URL: http://ingestion-worker:8000
       EMBEDDING_SERVICE_URL: http://embedding-service:8000
+      EMBEDDING_MODEL_NAME: embeddinggemma
       POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
       QDRANT_URL: http://qdrant:6333
     command: >

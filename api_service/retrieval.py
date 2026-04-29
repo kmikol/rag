@@ -19,7 +19,7 @@ class QueryEmbedding:
     """Embedding-service response for one interactive search query."""
 
     embedding: list[float]
-    model_name: str
+    embedding_model_name: str
     dimension: int
 
 
@@ -74,7 +74,7 @@ class HttpQueryEmbeddingClient:
 
         return QueryEmbedding(
             embedding=[float(value) for value in embedding],
-            model_name=_required_str(body, "model_name"),
+            embedding_model_name=_required_str(body, "embedding_model_name"),
             dimension=_required_int(body, "dimension"),
         )
 

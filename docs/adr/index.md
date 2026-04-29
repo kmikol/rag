@@ -26,11 +26,12 @@ Each ADR follows a standard format:
 | [006](006-chunking-strategy.md) | Chunking Strategy | Accepted | Structure-aware Markdown/PDF chunking with citation metadata |
 | [007](007-retrieval-and-answerability.md) | Retrieval and Answerability | Accepted | Hybrid retrieval, citations, and configurable refusal gates |
 | [008](008-job-coordination-and-service-contracts.md) | Job Coordination and Service Contracts | Accepted | PostgreSQL-backed job records and minimal service API contracts |
+| [009](009-provider-configurable-model-services.md) | Provider-Configurable Model Services | Accepted | Model providers are selected by env; Ollama remains the private default while external APIs are explicit deployments |
 
 ## When to Reference These
 
 - **Before changing corpus lifecycle behavior**: See ADR-001 and ADR-005.
-- **Before moving services between machines**: See ADR-002, ADR-003, and ADR-004.
+- **Before moving services between machines or model providers**: See ADR-002, ADR-003, ADR-004, and ADR-009.
 - **Before changing chunking or retrieval**: See ADR-006 and ADR-007.
 - **Before adding queue infrastructure**: See ADR-008.
 - **When wondering why the system refuses to answer**: See ADR-000 and ADR-007.

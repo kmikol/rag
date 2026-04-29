@@ -1,0 +1,129 @@
+# Provider-backed end-to-end RAG test stack.
+#
+# This sends synthetic test documents and prompts to Google-hosted APIs.
+# Required:
+#   GEMINI_API_KEY_E2E_TEST
+#
+# Usage:
+#   GEMINI_API_KEY_E2E_TEST=... make test.e2e
+
+services:
+  postgres:
+    image: postgres:16
+    env_file:
+      - config/env/postgres.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+
+  embedding-service:
+    build:
+      context: .
+      dockerfile: embedding_service/Dockerfile
+    environment:
+      EMBEDDING_BACKEND: google
+      EMBEDDING_MODEL_NAME: gemini-embedding-2
+      EMBEDDING_DIMENSION: ${GOOGLE_EMBEDDING_DIMENSION:-768}
+      EMBEDDING_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
+      EMBEDDING_API_KEY: ${GEMINI_API_KEY_E2E_TEST:?Set GEMINI_API_KEY_E2E_TEST}
+      EMBEDDING_TIMEOUT_SECONDS: 60
+      EMBEDDING_KEEP_ALIVE: 5m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-service:
+    build:
+      context: .
+      dockerfile: api_service/Dockerfile
+    environment:
+      RAG_API_KEY: test-token
+      POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: rag_e2e_google
+      EMBEDDING_SERVICE_URL: http://embedding-service:8000
+      LLM_PROVIDER: google_genai
+      LLM_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
+      LLM_MODEL: gemma-4-31b-it
+      LLM_API_KEY: ${GEMINI_API_KEY_E2E_TEST:?Set GEMINI_API_KEY_E2E_TEST}
+      LLM_TIMEOUT_SECONDS: 180
+      CHAT_MIN_TOP_SCORE: 0.1
+      CHAT_MIN_USABLE_CHUNKS: 1
+      CHAT_MAX_CONTEXT_CHUNKS: 5
+      CHAT_MAX_CHUNK_CHARS: 2000
+      WATCH_ROOTS: /e2e-watch
+      DOCUMENT_STORE_PATH: /e2e-documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    environment:
+      POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: rag_e2e_google
+      EMBEDDING_SERVICE_URL: http://embedding-service:8000
+      WATCH_ROOTS: /e2e-watch
+      DOCUMENT_STORE_PATH: /e2e-documents
+    volumes:
+      - e2e-watch:/e2e-watch
+      - e2e-documents:/e2e-documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  test:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    environment:
+      API_SERVICE_URL: http://api-service:8000
+      EMBEDDING_SERVICE_URL: http://embedding-service:8000
+      POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: rag_e2e_google
+      WATCH_ROOTS: /e2e-watch
+      DOCUMENT_STORE_PATH: /e2e-documents
+      RAG_API_KEY: test-token
+      GEMINI_API_KEY_E2E_TEST: ${GEMINI_API_KEY_E2E_TEST:?Set GEMINI_API_KEY_E2E_TEST}
+    volumes:
+      - e2e-watch:/e2e-watch
+      - e2e-documents:/e2e-documents
+    depends_on:
+      api-service:
+        condition: service_started
+      ingestion-worker:
+        condition: service_started
+      embedding-service:
+        condition: service_healthy
+    command: pytest tests/e2e/ -v
+
+volumes:
+  e2e-watch:
+  e2e-documents:
+
+networks:
+  default:
+    name: rag-e2e

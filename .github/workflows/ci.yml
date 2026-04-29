@@ -33,3 +33,14 @@ jobs:
 
       - name: Smoke tests
         run: make test.smoke
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      GEMINI_API_KEY_E2E_TEST: ${{ secrets.GEMINI_API_KEY_E2E_TEST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: End-to-end RAG test
+        run: make test.e2e
