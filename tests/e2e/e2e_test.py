@@ -201,12 +201,14 @@ def test_rag_pipeline_end_to_end() -> None:
 
 def _wait_for_api(api_url: str) -> None:
     deadline = time.monotonic() + 60
+    last_error = "no health request attempted"
     while time.monotonic() < deadline:
         try:
             response = httpx.get(f"{api_url}/health", timeout=5)
             if response.status_code == 200:
                 return
-        except httpx.HTTPError:
-            pass
+            last_error = f"status={response.status_code} body={response.text}"
+        except httpx.HTTPError as error:
+            last_error = f"request failed: {error!r}"
         time.sleep(1)
-    raise AssertionError("api-service did not become healthy")
+    raise AssertionError(f"api-service did not become healthy: {last_error}")
