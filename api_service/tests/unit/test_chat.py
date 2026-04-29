@@ -8,7 +8,12 @@ from urllib import error
 import pytest
 
 from api_service import chat
-from api_service.chat import GenerationError, OpenAIChatCompletionClient
+from api_service.chat import (
+    GenerationError,
+    GenerationOptions,
+    GoogleGenerateContentLLMClient,
+    OpenAICompatibleLLMClient,
+)
 
 
 class FakeResponse:
@@ -39,17 +44,22 @@ def test_openai_chat_client_posts_chat_completions_payload(
 
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 
-    answer = OpenAIChatCompletionClient(
-        "http://ollama:11434",
+    answer = OpenAICompatibleLLMClient(
+        "http://llm.example/v1/chat/completions",
         model_name="gemma3:4b",
         timeout_seconds=120,
-    ).complete([{"role": "user", "content": "hello"}])
+    ).complete(
+        [{"role": "user", "content": "hello"}],
+        GenerationOptions(temperature=0.2, max_tokens=64),
+    )
 
     assert answer == "Grounded answer [1]."
-    assert captured["url"] == "http://ollama:11434/v1/chat/completions"
+    assert captured["url"] == "http://llm.example/v1/chat/completions"
     assert captured["timeout"] == 120
     assert b'"model": "gemma3:4b"' in captured["body"]
     assert b'"stream": false' in captured["body"]
+    assert b'"temperature": 0.2' in captured["body"]
+    assert b'"max_tokens": 64' in captured["body"]
     assert "Authorization" not in captured["headers"]
 
 
@@ -64,8 +74,8 @@ def test_openai_chat_client_sends_configured_api_key(
 
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 
-    OpenAIChatCompletionClient(
-        "http://ollama:11434",
+    OpenAICompatibleLLMClient(
+        "http://llm.example/v1/chat/completions",
         model_name="gemma3:4b",
         timeout_seconds=120,
         api_key="secret-token",
@@ -83,7 +93,9 @@ def test_openai_chat_client_rejects_invalid_json_response(
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 
     with pytest.raises(GenerationError, match="invalid JSON response"):
-        OpenAIChatCompletionClient("http://ollama", "gemma3:4b", 120).complete([])
+        OpenAICompatibleLLMClient(
+            "http://llm.example/v1/chat/completions", "gemma3:4b", 120
+        ).complete([])
 
 
 def test_openai_chat_client_rejects_missing_choices(
@@ -95,7 +107,9 @@ def test_openai_chat_client_rejects_missing_choices(
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 
     with pytest.raises(GenerationError, match="missing choices"):
-        OpenAIChatCompletionClient("http://ollama", "gemma3:4b", 120).complete([])
+        OpenAICompatibleLLMClient(
+            "http://llm.example/v1/chat/completions", "gemma3:4b", 120
+        ).complete([])
 
 
 def test_openai_chat_client_handles_non_utf8_http_error(
@@ -113,4 +127,64 @@ def test_openai_chat_client_handles_non_utf8_http_error(
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 
     with pytest.raises(GenerationError, match="<non-UTF-8 response body>"):
-        OpenAIChatCompletionClient("http://ollama", "gemma3:4b", 120).complete([])
+        OpenAICompatibleLLMClient(
+            "http://llm.example/v1/chat/completions", "gemma3:4b", 120
+        ).complete([])
+
+
+def test_google_generate_content_client_posts_native_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(req: Any, timeout: int) -> FakeResponse:
+        captured["url"] = req.full_url
+        captured["headers"] = dict(req.header_items())
+        captured["body"] = req.data
+        captured["timeout"] = timeout
+        return FakeResponse(
+            b'{"candidates":[{"content":{"parts":[{"text":"Grounded answer [1]."}]}}]}'
+        )
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    answer = GoogleGenerateContentLLMClient(
+        endpoint_url="https://generativelanguage.googleapis.com/v1beta",
+        model_name="gemma-4-31b-it",
+        timeout_seconds=180,
+        api_key="secret-token",
+    ).complete(
+        [
+            {"role": "system", "content": "Answer from context."},
+            {"role": "user", "content": "Question"},
+        ],
+        GenerationOptions(temperature=0.1, max_tokens=64),
+    )
+
+    assert answer == "Grounded answer [1]."
+    assert captured["url"] == (
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent"
+    )
+    assert captured["headers"]["X-goog-api-key"] == "secret-token"
+    assert captured["timeout"] == 180
+    payload = captured["body"]
+    assert b'"systemInstruction"' in payload
+    assert b'"contents"' in payload
+    assert b'"maxOutputTokens": 64' in payload
+
+
+def test_google_generate_content_client_rejects_missing_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(*args: object, **kwargs: object) -> FakeResponse:
+        return FakeResponse(b'{"candidates":[{"content":{"parts":[]}}]}')
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(GenerationError, match="missing text"):
+        GoogleGenerateContentLLMClient(
+            "https://generativelanguage.googleapis.com/v1beta",
+            "gemma-4-31b-it",
+            180,
+            "secret-token",
+        ).complete([{"role": "user", "content": "hello"}])

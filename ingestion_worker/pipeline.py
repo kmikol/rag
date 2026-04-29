@@ -31,7 +31,7 @@ class IngestionPipelineError(RuntimeError):
 class EmbeddingModelInfo:
     """Embedding model identity returned by `embedding-service`."""
 
-    model_name: str
+    embedding_model_name: str
     dimension: int
 
 
@@ -40,7 +40,7 @@ class BatchEmbeddingResult:
     """Batch embedding response used by the ingestion pipeline."""
 
     embeddings: list[list[float]]
-    model_name: str
+    embedding_model_name: str
     dimension: int
 
 
@@ -107,7 +107,7 @@ class HttpEmbeddingClient:
         """Fetch model identity from `GET /model-info`."""
         body = self._request("GET", "/model-info")
         return EmbeddingModelInfo(
-            model_name=_required_str(body, "model_name"),
+            embedding_model_name=_required_str(body, "embedding_model_name"),
             dimension=_required_int(body, "dimension"),
         )
 
@@ -124,7 +124,7 @@ class HttpEmbeddingClient:
 
         return BatchEmbeddingResult(
             embeddings=[[float(value) for value in vector] for vector in embeddings],
-            model_name=_required_str(body, "model_name"),
+            embedding_model_name=_required_str(body, "embedding_model_name"),
             dimension=_required_int(body, "dimension"),
         )
 
@@ -356,7 +356,7 @@ def _process_source_path(
         repository.update_document_version_state(
             document_version_id,
             "embedded",
-            embedding_model_name=embedding_result.model_name,
+            embedding_model_name=embedding_result.embedding_model_name,
             embedding_dimension=embedding_result.dimension,
         )
         repository.update_ingestion_job(job_id, "embedded")

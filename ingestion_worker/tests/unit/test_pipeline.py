@@ -25,13 +25,13 @@ class FakeEmbeddingClient:
 
     def model_info(self) -> EmbeddingModelInfo:
         self.model_info_calls += 1
-        return EmbeddingModelInfo(model_name="fake-model", dimension=3)
+        return EmbeddingModelInfo(embedding_model_name="fake-model", dimension=3)
 
     def embed_batch(self, texts: list[str]) -> BatchEmbeddingResult:
         self.embedded_texts.extend(texts)
         return BatchEmbeddingResult(
             embeddings=[[float(index + 1), 0.0, 0.0] for index, _ in enumerate(texts)],
-            model_name="fake-model",
+            embedding_model_name="fake-model",
             dimension=3,
         )
 
@@ -62,6 +62,7 @@ def make_settings(tmp_path: Path) -> AppSettings:
         POSTGRES_URL="sqlite+pysqlite:///:memory:",
         QDRANT_URL="http://qdrant:6333",
         EMBEDDING_SERVICE_URL="http://embedding-service:8000",
+        EMBEDDING_MODEL_NAME="fake-model",
         WATCH_ROOTS=str(tmp_path / "watch"),
         DOCUMENT_STORE_PATH=str(tmp_path / "documents"),
     )

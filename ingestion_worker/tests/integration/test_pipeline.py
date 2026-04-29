@@ -29,6 +29,7 @@ def test_one_shot_worker_ingests_markdown_into_postgres_and_qdrant(tmp_path: Pat
         QDRANT_URL=os.environ["QDRANT_URL"],
         QDRANT_COLLECTION=collection_name,
         EMBEDDING_SERVICE_URL=os.environ["EMBEDDING_SERVICE_URL"],
+        EMBEDDING_MODEL_NAME="embeddinggemma",
         WATCH_ROOTS=str(tmp_path),
         DOCUMENT_STORE_PATH=str(document_store),
     )

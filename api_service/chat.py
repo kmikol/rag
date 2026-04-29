@@ -12,9 +12,21 @@ class GenerationError(RuntimeError):
     """Raised when the chat generator cannot produce a usable response."""
 
 
-class ChatCompletionClient(Protocol):
-    def complete(self, messages: list[dict[str, str]]) -> str:
-        """Generate one assistant message from OpenAI-compatible chat messages."""
+@dataclass(frozen=True)
+class GenerationOptions:
+    """Optional provider-neutral controls for one LLM generation request."""
+
+    temperature: float | None = None
+    max_tokens: int | None = None
+
+
+class LLMClient(Protocol):
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> str:
+        """Generate one assistant message from chat messages."""
 
 
 @dataclass(frozen=True)
@@ -38,36 +50,45 @@ class ReadableResponse(Protocol):
         """Read the raw response body bytes."""
 
 
-class OpenAIChatCompletionClient:
-    """HTTP client for Ollama's OpenAI-compatible chat completions endpoint."""
+class OpenAICompatibleLLMClient:
+    """HTTP client for OpenAI-compatible chat completions endpoints."""
 
     def __init__(
         self,
-        base_url: str,
+        chat_completions_url: str,
         model_name: str,
         timeout_seconds: int,
         api_key: str | None = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        self.chat_completions_url = chat_completions_url
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.api_key = api_key.strip() if api_key else None
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> str:
         """Generate one non-streaming chat completion."""
-        payload = json.dumps(
-            {
-                "model": self.model_name,
-                "messages": messages,
-                "stream": False,
-            }
-        ).encode("utf-8")
+        request_body: dict[str, object] = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": False,
+        }
+        if options is not None:
+            if options.temperature is not None:
+                request_body["temperature"] = options.temperature
+            if options.max_tokens is not None:
+                request_body["max_tokens"] = options.max_tokens
+
+        payload = json.dumps(request_body).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         req = request.Request(
-            url=f"{self.base_url}/v1/chat/completions",
+            url=self.chat_completions_url,
             data=payload,
             headers=headers,
             method="POST",
@@ -77,11 +98,56 @@ class OpenAIChatCompletionClient:
                 body = _read_json_response(response)
         except error.HTTPError as exc:
             detail = _read_http_error_detail(exc)
-            raise GenerationError(f"Ollama chat HTTP error: {detail}") from exc
+            raise GenerationError(f"LLM chat HTTP error: {detail}") from exc
         except error.URLError as exc:
-            raise GenerationError(f"Ollama chat unavailable: {exc.reason}") from exc
+            raise GenerationError(f"LLM chat unavailable: {exc.reason}") from exc
 
         return _parse_chat_completion(body)
+
+
+class GoogleGenerateContentLLMClient:
+    """HTTP client for Google AI Studio's native generateContent endpoint."""
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        model_name: str,
+        timeout_seconds: int,
+        api_key: str | None,
+    ) -> None:
+        self.endpoint_url = endpoint_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+        self.api_key = api_key.strip() if api_key else None
+
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> str:
+        """Generate one response through Google's native content API."""
+        request_body = _build_google_generate_content_request(messages, options)
+        payload = json.dumps(request_body).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["x-goog-api-key"] = self.api_key
+
+        req = request.Request(
+            url=f"{self.endpoint_url}/models/{self.model_name}:generateContent",
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = _read_json_response(response)
+        except error.HTTPError as exc:
+            detail = _read_http_error_detail(exc)
+            raise GenerationError(f"Google generateContent HTTP error: {detail}") from exc
+        except error.URLError as exc:
+            raise GenerationError(f"Google generateContent unavailable: {exc.reason}") from exc
+
+        return _parse_google_generate_content(body)
 
 
 def assess_answerability(
@@ -153,13 +219,13 @@ def _read_json_response(response: ReadableResponse) -> dict[str, object]:
     try:
         raw_body = response.read()
         if not isinstance(raw_body, bytes):
-            raise GenerationError("Ollama chat returned a non-bytes response.")
+            raise GenerationError("LLM chat returned a non-bytes response.")
         body = json.loads(raw_body.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise GenerationError("Ollama chat returned an invalid JSON response.") from exc
+        raise GenerationError("LLM chat returned an invalid JSON response.") from exc
 
     if not isinstance(body, dict):
-        raise GenerationError("Ollama chat returned a non-object response.")
+        raise GenerationError("LLM chat returned a non-object response.")
     return body
 
 
@@ -170,21 +236,83 @@ def _read_http_error_detail(exc: error.HTTPError) -> str:
         return "<non-UTF-8 response body>"
 
 
+def _build_google_generate_content_request(
+    messages: list[dict[str, str]],
+    options: GenerationOptions | None,
+) -> dict[str, object]:
+    contents: list[dict[str, object]] = []
+    system_parts: list[dict[str, str]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append({"text": content})
+            continue
+
+        google_role = "model" if role == "assistant" else "user"
+        contents.append({"role": google_role, "parts": [{"text": content}]})
+
+    body: dict[str, object] = {"contents": contents}
+    if system_parts:
+        body["systemInstruction"] = {"parts": system_parts}
+
+    generation_config: dict[str, object] = {}
+    if options is not None:
+        if options.temperature is not None:
+            generation_config["temperature"] = options.temperature
+        if options.max_tokens is not None:
+            generation_config["maxOutputTokens"] = options.max_tokens
+    if generation_config:
+        body["generationConfig"] = generation_config
+
+    return body
+
+
 def _parse_chat_completion(body: dict[str, object]) -> str:
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise GenerationError("Ollama chat response missing choices.")
+        raise GenerationError("LLM chat response missing choices.")
 
     first_choice = choices[0]
     if not isinstance(first_choice, dict):
-        raise GenerationError("Ollama chat response contains an invalid choice.")
+        raise GenerationError("LLM chat response contains an invalid choice.")
 
     message = first_choice.get("message")
     if not isinstance(message, dict):
-        raise GenerationError("Ollama chat response missing message.")
+        raise GenerationError("LLM chat response missing message.")
 
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
-        raise GenerationError("Ollama chat response missing content.")
+        raise GenerationError("LLM chat response missing content.")
 
     return content
+
+
+def _parse_google_generate_content(body: dict[str, object]) -> str:
+    candidates = body.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise GenerationError("Google generateContent response missing candidates.")
+
+    first_candidate = candidates[0]
+    if not isinstance(first_candidate, dict):
+        raise GenerationError("Google generateContent response contains an invalid candidate.")
+
+    content = first_candidate.get("content")
+    if not isinstance(content, dict):
+        raise GenerationError("Google generateContent response missing content.")
+
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        raise GenerationError("Google generateContent response missing parts.")
+
+    text_parts = [
+        part.get("text")
+        for part in parts
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    ]
+    answer = "".join(text_parts).strip()
+    if not answer:
+        raise GenerationError("Google generateContent response missing text.")
+    return answer

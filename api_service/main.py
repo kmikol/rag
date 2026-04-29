@@ -10,10 +10,12 @@ from sqlalchemy.exc import NoResultFound
 
 from api_service.chat import (
     AnswerabilityConfig,
-    ChatCompletionClient,
     GenerationError,
+    GenerationOptions,
+    GoogleGenerateContentLLMClient,
     GroundingConfig,
-    OpenAIChatCompletionClient,
+    LLMClient,
+    OpenAICompatibleLLMClient,
     assess_answerability,
     build_grounded_messages,
     select_grounding_citations,
@@ -66,14 +68,26 @@ def get_vector_index() -> VectorIndex:
 
 
 @lru_cache
-def get_chat_completion_client() -> ChatCompletionClient:
-    """Return the OpenAI-compatible chat client used for grounded answers."""
+def get_chat_completion_client() -> LLMClient:
+    """Return the configured LLM client used for grounded answers."""
     settings = get_settings()
-    return OpenAIChatCompletionClient(
-        base_url=settings.ollama_url,
-        model_name=settings.ollama_generation_model,
-        timeout_seconds=settings.ollama_generation_timeout_seconds,
-        api_key=settings.ollama_api_key,
+    if settings.llm_provider == "openai_compatible":
+        return OpenAICompatibleLLMClient(
+            chat_completions_url=settings.llm_chat_completions_url,
+            model_name=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+            api_key=settings.llm_api_key,
+        )
+    if settings.llm_provider == "google_genai":
+        return GoogleGenerateContentLLMClient(
+            endpoint_url=settings.llm_endpoint_url,
+            model_name=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+            api_key=settings.llm_api_key,
+        )
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Unsupported LLM provider: {settings.llm_provider}",
     )
 
 
@@ -165,7 +179,7 @@ def chat(
     repository: Annotated[MetadataRepository, Depends(open_metadata_repository)],
     embedding_client: Annotated[QueryEmbeddingClient, Depends(get_query_embedding_client)],
     vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
-    chat_client: Annotated[ChatCompletionClient, Depends(get_chat_completion_client)],
+    chat_client: Annotated[LLMClient, Depends(get_chat_completion_client)],
 ) -> ChatResponse:
     settings = get_settings()
     retriever = SearchRetriever(
@@ -202,7 +216,11 @@ def chat(
 
     try:
         answer = chat_client.complete(
-            build_grounded_messages(request.query, grounding_citations, grounding_config)
+            build_grounded_messages(request.query, grounding_citations, grounding_config),
+            GenerationOptions(
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
         )
     except GenerationError as error:
         raise HTTPException(

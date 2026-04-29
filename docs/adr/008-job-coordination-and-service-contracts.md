@@ -51,7 +51,7 @@ Core configuration will use environment variables:
 - `POSTGRES_URL`
 - `QDRANT_URL`
 - `EMBEDDING_SERVICE_URL`
-- `OLLAMA_URL`
+- provider-specific model endpoint variables defined by ADR-009
 - `WATCH_ROOTS`
 - `DOCUMENT_STORE_PATH`
 - `RAG_API_KEY`
@@ -74,7 +74,7 @@ Defining minimal contracts now keeps service boundaries clear without over-desig
 - The ingestion worker must be idempotent enough to retry failed or abandoned jobs safely.
 - API handlers should create jobs and return quickly rather than running ingestion inline.
 - Services must be configured entirely by environment so containers can move between machines.
-- HTTP timeouts and health checks are required for calls to embedding and Ollama services.
+- HTTP timeouts and health checks are required for calls to embedding and model-provider services.
 
 ---
 

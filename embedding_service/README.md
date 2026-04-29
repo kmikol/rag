@@ -6,10 +6,11 @@ The `embedding-service` is a dedicated model-serving boundary for query and docu
 
 The service centralizes embedding model selection, model version, output dimensionality, batching behavior, and runtime placement. Both `api-service` and `ingestion-worker` call this service instead of loading embedding models in-process.
 
-The service supports two embedding backends:
+The service supports three embedding backends:
 
 - `fake`: deterministic fake embeddings for tests and contract validation.
 - `ollama`: runtime embeddings via Ollama's `/api/embed` endpoint.
+- `google`: runtime embeddings via Google AI Studio's REST `embedContent` endpoint.
 
 ## API Contract
 
@@ -37,22 +38,26 @@ Response:
 ```json
 {
   "embedding": [0.1, 0.2],
-  "model_name": "embeddinggemma",
+  "embedding_model_name": "embeddinggemma",
   "dimension": 2
 }
 ```
 
 ## Configuration
 
-- `EMBEDDING_BACKEND` (`fake` or `ollama`)
+- `EMBEDDING_BACKEND` (`fake`, `ollama`, or `google`)
 - `EMBEDDING_MODEL_NAME`
 - `EMBEDDING_DIMENSION`
-- `OLLAMA_URL`
-- `OLLAMA_EMBED_TIMEOUT_SECONDS`
-- `OLLAMA_KEEP_ALIVE`
+- `EMBEDDING_ENDPOINT_URL`
+- `EMBEDDING_API_KEY` (required for external providers)
+- `EMBEDDING_TIMEOUT_SECONDS`
+- `EMBEDDING_KEEP_ALIVE` (used by the Ollama backend)
 
-The service does not auto-pull models. Ollama must already have the configured model available.
+The service does not auto-pull local models. Ollama must already have the
+configured model available. External providers are not private/self-hosted:
+document chunks and query text sent for embedding leave the deployment.
 
 ## Related ADR
 
 - [ADR 004: Embedding Service](../adr/004-embedding-service.md)
+- [ADR 009: Provider-Configurable Model Services](../adr/009-provider-configurable-model-services.md)

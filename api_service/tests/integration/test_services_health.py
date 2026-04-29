@@ -26,6 +26,6 @@ def test_embedding_service_contract() -> None:
     assert embed_response.status_code == 200
     model_info = model_response.json()
     embedding = embed_response.json()
-    assert embedding["model_name"] == model_info["model_name"]
+    assert embedding["embedding_model_name"] == model_info["embedding_model_name"]
     assert embedding["dimension"] == model_info["dimension"]
     assert len(embedding["embedding"]) == model_info["dimension"]
