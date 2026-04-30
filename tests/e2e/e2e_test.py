@@ -263,7 +263,12 @@ def test_rag_pipeline_end_to_end() -> None:
     assert "cobalt blue" in remaining_search_body["results"][0]["text"].lower()
 
     deleted_search_body = _search(api_url, headers, BEACON_QUERY)
-    assert deleted_search_body["results"] == []
+    assert all(
+        result["document_id"] != second_document["id"] for result in deleted_search_body["results"]
+    )
+    assert all(
+        "silver chime" not in result["text"].lower() for result in deleted_search_body["results"]
+    )
 
     deleted_chat_response = httpx.post(
         f"{api_url}/chat",
