@@ -252,7 +252,10 @@ def test_rag_pipeline_end_to_end() -> None:
     )
 
     assert delete_response.status_code == 200, delete_response.text
-    assert delete_response.json()["id"] == second_document["id"]
+    delete_body = delete_response.json()
+    assert delete_body["id"] == second_document["id"]
+    assert delete_body["source_file_deleted"] is True
+    assert delete_body["managed_store_paths_deleted"]
     assert not second_source.exists()
 
     remaining_search_body = _search(api_url, headers, MARKER_QUERY)

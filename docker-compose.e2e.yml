@@ -65,6 +65,9 @@ services:
       CHAT_MAX_CHUNK_CHARS: 2000
       WATCH_ROOTS: /e2e-watch
       DOCUMENT_STORE_PATH: /e2e-documents
+    volumes:
+      - e2e-watch:/e2e-watch
+      - e2e-documents:/e2e-documents
     depends_on:
       postgres:
         condition: service_healthy
