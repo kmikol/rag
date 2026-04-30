@@ -716,7 +716,13 @@ def test_chat_stream_returns_sse_done_event(
         chunks = repository.create_chunks(
             document["id"],
             version["id"],
-            [ChunkRecord(text="Alpha content", source_path="/watch/example.md", original_filename="example.md")],
+            [
+                ChunkRecord(
+                    text="Alpha content",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                )
+            ],
         )
         repository.mark_document_version_active(version["id"])
 
@@ -732,10 +738,10 @@ def test_chat_stream_returns_sse_done_event(
     app.dependency_overrides[get_vector_index] = lambda: vector_index
     app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
 
-    response = client.post('/chat', json={"query": "alpha", "stream": True}, headers=auth_headers())
+    response = client.post("/chat", json={"query": "alpha", "stream": True}, headers=auth_headers())
 
     assert response.status_code == 200
-    assert response.headers['content-type'].startswith('text/event-stream')
+    assert response.headers["content-type"].startswith("text/event-stream")
     assert '"type": "token"' in response.text
     assert '"type": "done"' in response.text
     assert '"answer": "Alpha answer"' in response.text
@@ -749,10 +755,10 @@ def test_chat_stream_refusal_returns_single_done_event(client: TestClient) -> No
     app.dependency_overrides[get_vector_index] = lambda: vector_index
     app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
 
-    response = client.post('/chat', json={"query": "alpha", "stream": True}, headers=auth_headers())
+    response = client.post("/chat", json={"query": "alpha", "stream": True}, headers=auth_headers())
 
     assert response.status_code == 200
-    assert response.headers['content-type'].startswith('text/event-stream')
+    assert response.headers["content-type"].startswith("text/event-stream")
     assert '"refused": true' in response.text
-    assert 'Retrieved evidence is insufficient to answer reliably.' in response.text
+    assert "Retrieved evidence is insufficient to answer reliably." in response.text
     assert chat_client.stream_messages == []

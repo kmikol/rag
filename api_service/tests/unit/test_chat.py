@@ -194,7 +194,7 @@ class FakeStreamingResponse:
     def __init__(self, lines: list[bytes]) -> None:
         self.lines = lines
 
-    def __enter__(self) -> "FakeStreamingResponse":
+    def __enter__(self) -> FakeStreamingResponse:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -206,11 +206,13 @@ class FakeStreamingResponse:
 
 def test_openai_chat_client_streams_token_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_urlopen(*args: object, **kwargs: object) -> FakeStreamingResponse:
-        return FakeStreamingResponse([
-            b'data: {"choices":[{"delta":{"content":"Alpha "}}]}\n',
-            b'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
-            b'data: [DONE]\n',
-        ])
+        return FakeStreamingResponse(
+            [
+                b'data: {"choices":[{"delta":{"content":"Alpha "}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
+                b"data: [DONE]\n",
+            ]
+        )
 
     monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Protocol
 from urllib import error, request
 
@@ -112,8 +112,6 @@ class OpenAICompatibleLLMClient:
 
         return _parse_chat_completion(body)
 
-
-
     def stream_complete(
         self,
         messages: list[dict[str, str]],
@@ -150,11 +148,11 @@ class OpenAICompatibleLLMClient:
                     line = raw_line.decode("utf-8").strip()
                     if not line or not line.startswith("data:"):
                         continue
-                    payload = line.removeprefix("data:").strip()
-                    if payload == "[DONE]":
+                    data_payload = line.removeprefix("data:").strip()
+                    if data_payload == "[DONE]":
                         break
                     try:
-                        body = json.loads(payload)
+                        body = json.loads(data_payload)
                     except json.JSONDecodeError as exc:
                         raise GenerationError("LLM chat stream returned invalid JSON.") from exc
                     token = _parse_chat_stream_chunk(body)
@@ -165,6 +163,7 @@ class OpenAICompatibleLLMClient:
             raise GenerationError(f"LLM chat HTTP error: {detail}") from exc
         except error.URLError as exc:
             raise GenerationError(f"LLM chat unavailable: {exc.reason}") from exc
+
 
 class GoogleGenerateContentLLMClient:
     """HTTP client for Google AI Studio's native generateContent endpoint."""
@@ -209,7 +208,6 @@ class GoogleGenerateContentLLMClient:
             raise GenerationError(f"Google generateContent unavailable: {exc.reason}") from exc
 
         return _parse_google_generate_content(body)
-
 
     def stream_complete(
         self,

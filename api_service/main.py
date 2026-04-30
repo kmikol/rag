@@ -1,9 +1,8 @@
+import json
 from collections.abc import Iterator
 from functools import lru_cache
 from secrets import compare_digest
 from typing import Annotated
-
-import json
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -212,15 +211,15 @@ def chat(
     if refusal_reason is not None:
         if request.stream:
             event = {
-                'type': 'done',
-                'answer': None,
-                'citations': [citation.model_dump() for citation in grounding_citations],
-                'refused': True,
-                'refusal_reason': refusal_reason,
+                "type": "done",
+                "answer": None,
+                "citations": [citation.model_dump() for citation in grounding_citations],
+                "refused": True,
+                "refusal_reason": refusal_reason,
             }
             return StreamingResponse(
                 iter([f"data: {json.dumps(event)}\n\n"]),
-                media_type='text/event-stream',
+                media_type="text/event-stream",
             )
         return ChatResponse(
             answer=None,
@@ -236,6 +235,7 @@ def chat(
     )
 
     if request.stream:
+
         def event_stream() -> Iterator[str]:
             answer_parts: list[str] = []
             try:
@@ -245,17 +245,17 @@ def chat(
             except GenerationError as error:
                 yield f"data: {json.dumps({'type': 'error', 'detail': str(error)})}\n\n"
                 return
-            final_answer = ''.join(answer_parts)
+            final_answer = "".join(answer_parts)
             done_event = {
-                'type': 'done',
-                'answer': final_answer,
-                'citations': [citation.model_dump() for citation in grounding_citations],
-                'refused': False,
-                'refusal_reason': None,
+                "type": "done",
+                "answer": final_answer,
+                "citations": [citation.model_dump() for citation in grounding_citations],
+                "refused": False,
+                "refusal_reason": None,
             }
             yield f"data: {json.dumps(done_event)}\n\n"
 
-        return StreamingResponse(event_stream(), media_type='text/event-stream')
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     try:
         answer = chat_client.complete(messages, options)
