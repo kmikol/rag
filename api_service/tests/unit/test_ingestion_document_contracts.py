@@ -583,7 +583,7 @@ def test_chat_returns_bad_gateway_for_generation_failure(
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "LLM chat response missing choices."
+    assert response.json()["detail"] == "Chat generation failed."
 
 
 def test_search_returns_empty_results_when_vector_search_is_empty(client: TestClient) -> None:
@@ -745,6 +745,55 @@ def test_chat_stream_returns_sse_done_event(
     assert '"type": "token"' in response.text
     assert '"type": "done"' in response.text
     assert '"answer": "Alpha answer"' in response.text
+
+
+def test_chat_stream_returns_sanitized_error_event(
+    client: TestClient,
+    engine: Engine,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    embedding_client = FakeQueryEmbeddingClient()
+    vector_index = FakeVectorIndex()
+    chat_client = FakeChatCompletionClient()
+    chat_client.error = GenerationError("LLM chat response missing choices.")
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document("/watch/example.md")
+        version = repository.create_document_version(document["id"], "a" * 64)
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Alpha content",
+                    source_path="/watch/example.md",
+                    original_filename="example.md",
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    vector_index.results = [
+        VectorSearchResult(
+            chunk_id=chunks[0]["id"],
+            document_id=document["id"],
+            document_version_id=version["id"],
+            score=0.92,
+        )
+    ]
+    app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+    app.dependency_overrides[get_chat_completion_client] = lambda: chat_client
+
+    response = client.post("/chat", json={"query": "alpha", "stream": True}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert '"type": "error"' in response.text
+    assert '"detail": "Chat generation failed."' in response.text
+    assert "LLM chat response missing choices." not in response.text
+    assert "LLM chat response missing choices." in caplog.text
 
 
 def test_chat_stream_refusal_returns_single_done_event(client: TestClient) -> None:

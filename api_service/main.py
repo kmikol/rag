@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Iterator
 from functools import lru_cache
 from secrets import compare_digest
@@ -49,6 +50,8 @@ configure_logging()
 
 app = FastAPI(title="Personal RAG API Service")
 bearer_auth = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
+CHAT_GENERATION_ERROR_DETAIL = "Chat generation failed."
 
 
 @lru_cache
@@ -182,7 +185,7 @@ def chat(
     embedding_client: Annotated[QueryEmbeddingClient, Depends(get_query_embedding_client)],
     vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
     chat_client: Annotated[LLMClient, Depends(get_chat_completion_client)],
-) -> ChatResponse:
+) -> ChatResponse | StreamingResponse:
     settings = get_settings()
     retriever = SearchRetriever(
         embedding_client=embedding_client,
@@ -242,8 +245,13 @@ def chat(
                 for token in chat_client.stream_complete(messages, options):
                     answer_parts.append(token)
                     yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
-            except GenerationError as error:
-                yield f"data: {json.dumps({'type': 'error', 'detail': str(error)})}\n\n"
+            except GenerationError:
+                logger.exception("Chat stream generation failed.")
+                yield (
+                    f"data: "
+                    f"{json.dumps({'type': 'error', 'detail': CHAT_GENERATION_ERROR_DETAIL})}"
+                    f"\n\n"
+                )
                 return
             final_answer = "".join(answer_parts)
             done_event = {
@@ -260,9 +268,10 @@ def chat(
     try:
         answer = chat_client.complete(messages, options)
     except GenerationError as error:
+        logger.exception("Chat generation failed.")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
+            detail=CHAT_GENERATION_ERROR_DETAIL,
         ) from error
 
     return ChatResponse(
