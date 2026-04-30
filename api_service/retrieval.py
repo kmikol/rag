@@ -37,6 +37,9 @@ class VectorIndex(Protocol):
     def ensure_collection(self, dimension: int) -> None:
         """Create or verify the vector collection for the embedding dimension."""
 
+    def delete_by_document_id(self, document_id: str) -> None:
+        """Delete all vectors for one logical document."""
+
     def search(
         self,
         query_vector: list[float],

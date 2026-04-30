@@ -1,7 +1,9 @@
 import json
 import logging
+import os
 from collections.abc import Iterator
 from functools import lru_cache
+from pathlib import Path
 from secrets import compare_digest
 from typing import Annotated
 
@@ -36,6 +38,7 @@ from shared.repository import MetadataRepository, create_metadata_engine
 from shared.schemas import (
     ChatRequest,
     ChatResponse,
+    DocumentDeleteResponse,
     DocumentListResponse,
     DocumentResponse,
     HealthResponse,
@@ -52,6 +55,7 @@ app = FastAPI(title="Personal RAG API Service")
 bearer_auth = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
 CHAT_GENERATION_ERROR_DETAIL = "Chat generation failed."
+DOCUMENT_DELETION_ERROR_DETAIL = "Document deletion failed."
 
 
 @lru_cache
@@ -172,6 +176,109 @@ def list_documents(
         for row in repository.list_documents()
     ]
     return DocumentListResponse(documents=documents)
+
+
+@app.delete(
+    "/documents/{document_id}",
+    response_model=DocumentDeleteResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def delete_document(
+    document_id: str,
+    repository: Annotated[MetadataRepository, Depends(open_metadata_repository)],
+    vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
+) -> DocumentDeleteResponse:
+    settings = get_settings()
+    deletion_target = repository.get_document_deletion_target(document_id)
+    if deletion_target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    document = deletion_target["document"]
+    source_path = str(document["source_path"])
+    try:
+        source_file = _validate_path_under_roots(
+            source_path, _parse_path_list(settings.watch_roots)
+        )
+        managed_files = [
+            _validate_path_under_root(path, Path(settings.document_store_path).expanduser())
+            for path in deletion_target["managed_store_paths"]
+        ]
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    try:
+        vector_index.delete_by_document_id(document_id)
+        source_file_deleted = _delete_file_if_present(source_file)
+        managed_store_paths_deleted = _delete_unique_files(managed_files)
+    except Exception as error:
+        logger.exception("Document deletion cleanup failed.")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=DOCUMENT_DELETION_ERROR_DETAIL,
+        ) from error
+
+    repository.delete_document(document_id)
+    return DocumentDeleteResponse(
+        id=document_id,
+        source_path=source_path,
+        deleted=True,
+        source_file_deleted=source_file_deleted,
+        managed_store_paths_deleted=managed_store_paths_deleted,
+    )
+
+
+def _parse_path_list(value: str) -> tuple[Path, ...]:
+    return tuple(
+        Path(part.strip()).expanduser() for part in value.split(os.pathsep) if part.strip()
+    )
+
+
+def _validate_path_under_roots(path: str, roots: tuple[Path, ...]) -> Path:
+    if not roots:
+        raise ValueError("WATCH_ROOTS must contain at least one path for document deletion.")
+    for root in roots:
+        try:
+            return _validate_path_under_root(path, root)
+        except ValueError:
+            continue
+    raise ValueError(f"Path is outside configured watch roots: {path}")
+
+
+def _validate_path_under_root(path: str | Path, root: Path) -> Path:
+    resolved_path = Path(path).expanduser().resolve(strict=False)
+    resolved_root = root.expanduser().resolve(strict=False)
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as error:
+        raise ValueError(f"Path is outside configured root: {path}") from error
+    return resolved_path
+
+
+def _delete_file_if_present(path: Path) -> bool:
+    if not path.exists():
+        return False
+    if not path.is_file():
+        raise ValueError(f"Deletion target is not a file: {path}")
+    path.unlink()
+    return True
+
+
+def _delete_unique_files(paths: list[Path]) -> list[str]:
+    deleted: list[str] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        if _delete_file_if_present(path):
+            deleted.append(str(path))
+    return deleted
 
 
 @app.post(

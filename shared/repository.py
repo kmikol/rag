@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Engine, Row, Select, create_engine, select, update
+from sqlalchemy import Engine, Row, Select, create_engine, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection
 
@@ -380,6 +380,43 @@ class MetadataRepository:
                 .one()
             )
         return {"document": dict(document), "active_version": dict(version) if version else None}
+
+    def get_document_deletion_target(self, document_id: str) -> dict[str, Any] | None:
+        """Return document metadata and managed copy paths needed for hard deletion."""
+        document = (
+            self.connection.execute(select(documents).where(documents.c.id == document_id))
+            .mappings()
+            .one_or_none()
+        )
+        if document is None:
+            return None
+
+        version_rows = (
+            self.connection.execute(
+                select(document_versions.c.managed_store_path).where(
+                    document_versions.c.document_id == document_id
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return {
+            "document": dict(document),
+            "managed_store_paths": [
+                str(row["managed_store_path"])
+                for row in version_rows
+                if row["managed_store_path"] is not None
+            ],
+        }
+
+    def delete_document(self, document_id: str) -> bool:
+        """Hard-delete one logical document plus its versions and chunks."""
+        self.connection.execute(delete(chunks).where(chunks.c.document_id == document_id))
+        self.connection.execute(
+            delete(document_versions).where(document_versions.c.document_id == document_id)
+        )
+        result = self.connection.execute(delete(documents).where(documents.c.id == document_id))
+        return result.rowcount > 0
 
     def list_documents(self) -> list[dict[str, Any]]:
         """List logical documents with active-version metadata for API responses."""

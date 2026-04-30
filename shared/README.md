@@ -28,7 +28,8 @@ an explicit transaction. It supports:
 - creating logical documents and immutable document versions;
 - activating a document version;
 - persisting citation-ready chunk records;
-- listing documents with active-version metadata.
+- listing documents with active-version metadata;
+- loading document deletion targets and hard-deleting document metadata.
 
 `shared.repository.create_metadata_engine` creates the SQLAlchemy engine from
 `POSTGRES_URL`.

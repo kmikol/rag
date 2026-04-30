@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -143,3 +144,87 @@ def test_search_endpoint_returns_qdrant_backed_citations() -> None:
         assert results[0]["heading_path"] == ["Integration"]
     finally:
         vector_index.delete_by_document_id(document["id"])
+
+
+def test_delete_document_endpoint_removes_files_metadata_and_qdrant_vectors() -> None:
+    upgrade_database()
+    base_url = os.environ["API_SERVICE_URL"]
+    query = f"delete integration phrase {uuid4().hex}"
+    unique = uuid4().hex
+    watch_root = Path(os.environ["WATCH_ROOTS"].split(os.pathsep)[0])
+    document_store = Path(os.environ["DOCUMENT_STORE_PATH"])
+    source_path = watch_root / f"{unique}.md"
+    managed_path = document_store / unique[:2] / f"{unique}.md"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    managed_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text("# Delete\n\nDelete integration content.", encoding="utf-8")
+    managed_path.write_text("# Delete\n\nManaged integration copy.", encoding="utf-8")
+
+    engine = create_metadata_engine(os.environ["POSTGRES_URL"])
+    vector_index = QdrantVectorIndex(url=os.environ["QDRANT_URL"])
+    vector_index.ensure_collection(8)
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document(str(source_path))
+        version = repository.create_document_version(
+            document["id"],
+            f"{unique}{unique}",
+            str(managed_path),
+        )
+        chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Delete integration content",
+                    source_path=str(source_path),
+                    original_filename=source_path.name,
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    try:
+        vector_index.upsert_chunks(
+            [
+                ChunkVector(
+                    chunk_id=chunks[0]["id"],
+                    document_id=document["id"],
+                    document_version_id=version["id"],
+                    vector=make_fake_embedding(query, 8),
+                    text="Delete integration content",
+                )
+            ]
+        )
+
+        deleted = httpx.delete(
+            f"{base_url}/documents/{document['id']}",
+            headers=auth_headers(),
+            timeout=5,
+        )
+
+        assert deleted.status_code == 200
+        assert deleted.json()["id"] == document["id"]
+        assert deleted.json()["source_file_deleted"] is True
+        assert not source_path.exists()
+        assert not managed_path.exists()
+
+        search = httpx.post(
+            f"{base_url}/search",
+            json={"query": query, "limit": 1},
+            headers=auth_headers(),
+            timeout=5,
+        )
+
+        assert search.status_code == 200
+        assert search.json()["results"] == []
+        with engine.begin() as connection:
+            repository = MetadataRepository(connection)
+            assert repository.get_document_deletion_target(document["id"]) is None
+    finally:
+        vector_index.delete_by_document_id(document["id"])
+        if source_path.exists():
+            source_path.unlink()
+        if managed_path.exists():
+            managed_path.unlink()
