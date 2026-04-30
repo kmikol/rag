@@ -120,6 +120,7 @@ def test_search_endpoint_returns_qdrant_backed_citations() -> None:
                     document_id=document["id"],
                     document_version_id=version["id"],
                     vector=make_fake_embedding(query, 8),
+                    text="Integration search result",
                 )
             ]
         )

@@ -19,7 +19,7 @@ Implemented in this skeleton:
 | `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
 | `GET` | `/documents` | List ingested documents |
 | `POST` | `/chat` | Generate or refuse an answer from retrieved chunks |
-| `POST` | `/search` | Return dense retrieval results with citation metadata |
+| `POST` | `/search` | Return hybrid retrieval results with citation metadata |
 
 Planned:
 
@@ -35,9 +35,10 @@ ingestion; omitting it creates a full-scan job.
 `POST /search` accepts a non-empty `query` string and optional `limit` integer
 from 1 through 100.
 It embeds the query through `embedding-service`, searches the configured Qdrant
-collection, loads active chunk metadata from PostgreSQL, and returns ranked
-results with citation fields. Sparse PostgreSQL full-text search is not wired
-yet because the current schema has no FTS index support.
+collection with dense vectors, lexical sparse vectors, and sparse-ranked
+text-filtered matching, loads active chunk metadata from PostgreSQL, and returns
+ranked results with citation fields and retrieval provenance. PostgreSQL
+hydrates active metadata only; sparse and full-text matching live in Qdrant.
 
 `POST /chat` accepts the same non-empty `query` string and optional `limit`
 integer as search. It runs retrieval first, applies configurable answerability
@@ -88,3 +89,4 @@ The service reads configuration from environment variables:
 - [ADR 007: Retrieval and Answerability](../adr/007-retrieval-and-answerability.md)
 - [ADR 008: Job Coordination and Service Contracts](../adr/008-job-coordination-and-service-contracts.md)
 - [ADR 009: Provider-Configurable Model Services](../adr/009-provider-configurable-model-services.md)
+- [ADR 010: Qdrant-Owned Hybrid Retrieval](../adr/010-qdrant-owned-hybrid-retrieval.md)

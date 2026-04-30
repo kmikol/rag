@@ -19,7 +19,7 @@ from api_service.retrieval import QueryEmbedding, RetrievalError
 from shared.config import get_settings
 from shared.db import metadata
 from shared.repository import ChunkRecord, MetadataRepository
-from shared.vector_index import VectorSearchResult
+from shared.vector_index import RetrievalSourceScore, VectorSearchResult
 
 
 @pytest.fixture
@@ -82,16 +82,23 @@ class FakeVectorIndex:
         self.results: list[VectorSearchResult] = []
         self.ensured_dimensions: list[int] = []
         self.query_vector: list[float] | None = None
+        self.query_text: str | None = None
         self.limit: int | None = None
         self.error: RuntimeError | None = None
 
     def ensure_collection(self, dimension: int) -> None:
         self.ensured_dimensions.append(dimension)
 
-    def search(self, query_vector: list[float], limit: int) -> list[VectorSearchResult]:
+    def search(
+        self,
+        query_vector: list[float],
+        query_text: str,
+        limit: int,
+    ) -> list[VectorSearchResult]:
         if self.error is not None:
             raise self.error
         self.query_vector = query_vector
+        self.query_text = query_text
         self.limit = limit
         return self.results
 
@@ -261,6 +268,11 @@ def test_search_returns_citation_ready_chunks(
             document_id=document["id"],
             document_version_id=version["id"],
             score=0.92,
+            retrieval_sources=(
+                RetrievalSourceScore(source="dense", rank=1, score=0.91),
+                RetrievalSourceScore(source="sparse", rank=2, score=0.42),
+                RetrievalSourceScore(source="text", rank=1, score=None),
+            ),
         )
     ]
     app.dependency_overrides[get_query_embedding_client] = lambda: embedding_client
@@ -276,6 +288,7 @@ def test_search_returns_citation_ready_chunks(
     assert embedding_client.queries == ["alpha"]
     assert vector_index.ensured_dimensions == [3]
     assert vector_index.query_vector == [1.0, 0.0, 0.0]
+    assert vector_index.query_text == "alpha"
     assert vector_index.limit == 5
     body = response.json()
     assert body["results"] == [
@@ -292,6 +305,11 @@ def test_search_returns_citation_ready_chunks(
             "section_title": "Alpha",
             "start_offset": 10,
             "end_offset": 23,
+            "retrieval_sources": [
+                {"source": "dense", "rank": 1, "score": 0.91},
+                {"source": "sparse", "rank": 2, "score": 0.42},
+                {"source": "text", "rank": 1, "score": None},
+            ],
         }
     ]
 

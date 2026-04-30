@@ -87,6 +87,7 @@ nav:
     - 007 Retrieval and Answerability: adr/007-retrieval-and-answerability.md
     - 008 Job Coordination and Service Contracts: adr/008-job-coordination-and-service-contracts.md
     - 009 Provider-Configurable Model Services: adr/009-provider-configurable-model-services.md
+    - 010 Qdrant-Owned Hybrid Retrieval: adr/010-qdrant-owned-hybrid-retrieval.md
   - Modules:
     - Modules Index: modules/index.md
     - API Service: modules/api-service.md

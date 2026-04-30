@@ -71,6 +71,12 @@ class SearchRequest(QueryLimitRequest):
     pass
 
 
+class RetrievalSourceScore(BaseModel):
+    source: Literal["dense", "sparse", "text"]
+    rank: int = Field(ge=1)
+    score: float | None
+
+
 class SearchResult(BaseModel):
     score: float
     text: str
@@ -84,6 +90,7 @@ class SearchResult(BaseModel):
     section_title: str | None
     start_offset: int | None
     end_offset: int | None
+    retrieval_sources: list[RetrievalSourceScore] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):

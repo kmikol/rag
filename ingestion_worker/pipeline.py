@@ -374,6 +374,7 @@ def _process_source_path(
                     document_id=document_id,
                     document_version_id=document_version_id,
                     vector=embedding,
+                    text=str(chunk_record["text"]),
                 )
                 for chunk_record, embedding in zip(
                     persisted_chunks,

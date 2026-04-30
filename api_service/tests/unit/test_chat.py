@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from email.message import Message
 from io import BytesIO
-from typing import Any
+from typing import Any, Literal
 from urllib import error
 
 import pytest
 
 from api_service import chat
 from api_service.chat import (
+    AnswerabilityConfig,
     GenerationError,
     GenerationOptions,
     GoogleGenerateContentLLMClient,
     OpenAICompatibleLLMClient,
+    assess_answerability,
 )
+from shared.schemas import RetrievalSourceScore, SearchResult
 
 
 class FakeResponse:
@@ -225,3 +228,69 @@ def test_openai_chat_client_streams_token_chunks(monkeypatch: pytest.MonkeyPatch
     )
 
     assert chunks == ["Alpha ", "answer"]
+
+
+def test_answerability_refuses_low_score_dense_only_result() -> None:
+    result = _search_result(
+        score=0.1,
+        retrieval_sources=[RetrievalSourceScore(source="dense", rank=1, score=0.1)],
+    )
+
+    reason = assess_answerability(
+        [result],
+        AnswerabilityConfig(min_top_score=0.5, min_usable_chunks=1),
+    )
+
+    assert reason == "Top retrieved evidence is below the answerability threshold."
+
+
+@pytest.mark.parametrize("source", ["sparse", "text"])
+def test_answerability_accepts_rank_one_exact_match_below_score_threshold(
+    source: Literal["sparse", "text"],
+) -> None:
+    result = _search_result(
+        score=0.333333,
+        retrieval_sources=[RetrievalSourceScore(source=source, rank=1, score=0.2)],
+    )
+
+    reason = assess_answerability(
+        [result],
+        AnswerabilityConfig(min_top_score=0.5, min_usable_chunks=1),
+    )
+
+    assert reason is None
+
+
+def test_answerability_refuses_lower_rank_exact_match_below_score_threshold() -> None:
+    result = _search_result(
+        score=0.333333,
+        retrieval_sources=[RetrievalSourceScore(source="text", rank=2, score=0.2)],
+    )
+
+    reason = assess_answerability(
+        [result],
+        AnswerabilityConfig(min_top_score=0.5, min_usable_chunks=1),
+    )
+
+    assert reason == "Top retrieved evidence is below the answerability threshold."
+
+
+def _search_result(
+    score: float,
+    retrieval_sources: list[RetrievalSourceScore],
+) -> SearchResult:
+    return SearchResult(
+        score=score,
+        text="Alpha content",
+        document_id="doc-1",
+        document_version_id="version-1",
+        chunk_id="chunk-1",
+        source_path="/watch/example.md",
+        original_filename="example.md",
+        page_number=None,
+        heading_path=None,
+        section_title=None,
+        start_offset=None,
+        end_offset=None,
+        retrieval_sources=retrieval_sources,
+    )

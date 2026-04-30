@@ -238,9 +238,16 @@ def assess_answerability(
     """Return a refusal reason when retrieval is too weak for generation."""
     if len(results) < config.min_usable_chunks:
         return "Retrieved evidence is insufficient to answer reliably."
-    if results[0].score < config.min_top_score:
+    if results[0].score < config.min_top_score and not _has_rank_one_exact_match(results[0]):
         return "Top retrieved evidence is below the answerability threshold."
     return None
+
+
+def _has_rank_one_exact_match(result: SearchResult) -> bool:
+    return any(
+        source.source in {"sparse", "text"} and source.rank == 1
+        for source in result.retrieval_sources
+    )
 
 
 def select_grounding_citations(
