@@ -66,7 +66,11 @@ def test_one_shot_worker_ingests_markdown_into_postgres_and_qdrant(tmp_path: Pat
         assert active_version["embedding_dimension"] == 8
         assert Path(active_version["managed_store_path"]).exists()
 
-        results = vector_index.search([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], limit=10)
+        results = vector_index.search(
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "Searchable integration chunk",
+            limit=10,
+        )
         assert any(result.document_id == listed["document"]["id"] for result in results)
     finally:
         if vector_index.client.collection_exists(collection_name):

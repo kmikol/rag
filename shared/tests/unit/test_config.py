@@ -25,7 +25,7 @@ def test_settings_defaults_are_usable(monkeypatch) -> None:
     assert settings.llm_timeout_seconds == 120
     assert settings.llm_temperature is None
     assert settings.llm_max_tokens is None
-    assert settings.chat_min_top_score == 0.5
+    assert settings.chat_min_top_score == 0.25
     assert settings.chat_min_usable_chunks == 1
     assert settings.chat_max_context_chunks == 5
     assert settings.chat_max_chunk_chars == 2000

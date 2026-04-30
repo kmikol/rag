@@ -43,7 +43,7 @@ class AppSettings(BaseSettings):
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_temperature: float | None = Field(default=None, ge=0, alias="LLM_TEMPERATURE")
     llm_max_tokens: int | None = Field(default=None, ge=1, alias="LLM_MAX_TOKENS")
-    chat_min_top_score: float = Field(default=0.5, ge=0, le=1, alias="CHAT_MIN_TOP_SCORE")
+    chat_min_top_score: float = Field(default=0.25, ge=0, le=1, alias="CHAT_MIN_TOP_SCORE")
     chat_min_usable_chunks: int = Field(default=1, ge=1, alias="CHAT_MIN_USABLE_CHUNKS")
     chat_max_context_chunks: int = Field(default=5, ge=1, le=100, alias="CHAT_MAX_CONTEXT_CHUNKS")
     chat_max_chunk_chars: int = Field(default=2000, ge=1, alias="CHAT_MAX_CHUNK_CHARS")

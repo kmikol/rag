@@ -25,28 +25,33 @@ def test_qdrant_vector_index_round_trip() -> None:
                     document_id=document_id,
                     document_version_id=first_version_id,
                     vector=[1.0, 0.0, 0.0],
+                    text="Alpha rareterm cobalt",
                 ),
                 ChunkVector(
                     chunk_id=second_chunk_id,
                     document_id=document_id,
                     document_version_id=second_version_id,
                     vector=[0.0, 1.0, 0.0],
+                    text="Beta other content",
                 ),
             ]
         )
 
-        results = index.search([1.0, 0.0, 0.0], limit=2)
+        results = index.search([1.0, 0.0, 0.0], "rareterm", limit=2)
 
         assert results[0].chunk_id == first_chunk_id
         assert results[0].document_id == document_id
         assert results[0].document_version_id == first_version_id
+        assert {source.source for source in results[0].retrieval_sources}
 
         index.delete_by_document_version_id(first_version_id)
-        remaining_chunk_ids = {result.chunk_id for result in index.search([1.0, 0.0, 0.0], limit=2)}
+        remaining_chunk_ids = {
+            result.chunk_id for result in index.search([1.0, 0.0, 0.0], "content", limit=2)
+        }
         assert first_chunk_id not in remaining_chunk_ids
         assert second_chunk_id in remaining_chunk_ids
 
         index.delete_by_document_id(document_id)
-        assert index.search([1.0, 0.0, 0.0], limit=2) == []
+        assert index.search([1.0, 0.0, 0.0], "content", limit=2) == []
     finally:
         index.client.delete_collection(collection_name=collection_name)

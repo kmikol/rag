@@ -16,7 +16,7 @@ the Python table definitions and repository helpers used by the services.
 - Shared API response schemas.
 - SQLAlchemy metadata table definitions for PostgreSQL.
 - A small repository layer for document metadata, chunks, and ingestion jobs.
-- A small Qdrant vector-index client for chunk embeddings.
+- A small Qdrant vector-index client for hybrid chunk retrieval.
 
 ## Callable Contract
 
@@ -34,10 +34,15 @@ an explicit transaction. It supports:
 `POSTGRES_URL`.
 
 `shared.vector_index.QdrantVectorIndex` is initialized from `QDRANT_URL` and
-`QDRANT_COLLECTION`. It creates or verifies the chunk-vector collection for a
-caller-provided embedding dimension, upserts chunk vectors, deletes vectors by
-`document_id` or `document_version_id`, and returns dense search results with
-payload IDs needed to load chunk metadata from PostgreSQL.
+`QDRANT_COLLECTION`. It creates or verifies the hybrid chunk collection for a
+caller-provided embedding dimension, upserts dense vectors, deterministic
+lexical sparse vectors, and chunk text payloads, deletes points by `document_id`
+or `document_version_id`, and returns fused retrieval results with provenance
+and payload IDs needed to load chunk metadata from PostgreSQL.
+
+Collections must use named vectors `dense` and `sparse` plus a text payload
+index on `text`. Legacy unnamed-vector collections are rejected with guidance to
+recreate the collection and reingest.
 
 ## Configuration
 
@@ -51,6 +56,7 @@ payload IDs needed to load chunk metadata from PostgreSQL.
 - [ADR 005: Document Identity and Ingestion State](../docs/adr/005-document-identity-and-ingestion-state.md)
 - [ADR 007: Retrieval and Answerability](../docs/adr/007-retrieval-and-answerability.md)
 - [ADR 008: Job Coordination and Service Contracts](../docs/adr/008-job-coordination-and-service-contracts.md)
+- [ADR 010: Qdrant-Owned Hybrid Retrieval](../docs/adr/010-qdrant-owned-hybrid-retrieval.md)
 
 ## Testing Helpers
 

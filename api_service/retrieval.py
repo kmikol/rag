@@ -6,7 +6,7 @@ from typing import Protocol
 from urllib import error, request
 
 from shared.repository import MetadataRepository
-from shared.schemas import SearchResult
+from shared.schemas import RetrievalSourceScore, SearchResult
 from shared.vector_index import VectorSearchResult
 
 
@@ -37,8 +37,13 @@ class VectorIndex(Protocol):
     def ensure_collection(self, dimension: int) -> None:
         """Create or verify the vector collection for the embedding dimension."""
 
-    def search(self, query_vector: list[float], limit: int) -> list[VectorSearchResult]:
-        """Return ranked dense retrieval candidates."""
+    def search(
+        self,
+        query_vector: list[float],
+        query_text: str,
+        limit: int,
+    ) -> list[VectorSearchResult]:
+        """Return ranked hybrid retrieval candidates."""
 
 
 class HttpQueryEmbeddingClient:
@@ -96,7 +101,7 @@ class SearchRetriever:
         embedding = self.embedding_client.embed_query(query)
         try:
             self.vector_index.ensure_collection(embedding.dimension)
-            dense_results = self.vector_index.search(embedding.embedding, limit)
+            dense_results = self.vector_index.search(embedding.embedding, query, limit)
         except RetrievalError:
             raise
         except Exception as exc:
@@ -124,6 +129,14 @@ class SearchRetriever:
                     section_title=chunk["section_title"],
                     start_offset=chunk["start_offset"],
                     end_offset=chunk["end_offset"],
+                    retrieval_sources=[
+                        RetrievalSourceScore(
+                            source=source.source,
+                            rank=source.rank,
+                            score=source.score,
+                        )
+                        for source in dense_result.retrieval_sources
+                    ],
                 )
             )
         return results

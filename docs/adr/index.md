@@ -27,6 +27,7 @@ Each ADR follows a standard format:
 | [007](007-retrieval-and-answerability.md) | Retrieval and Answerability | Accepted | Hybrid retrieval, citations, and configurable refusal gates |
 | [008](008-job-coordination-and-service-contracts.md) | Job Coordination and Service Contracts | Accepted | PostgreSQL-backed job records and minimal service API contracts |
 | [009](009-provider-configurable-model-services.md) | Provider-Configurable Model Services | Accepted | Model providers are selected by env; Ollama remains the private default while external APIs are explicit deployments |
+| [010](010-qdrant-owned-hybrid-retrieval.md) | Qdrant-Owned Hybrid Retrieval | Accepted | Dense, sparse, and text matching live in Qdrant; PostgreSQL hydrates metadata |
 
 ## When to Reference These
 
