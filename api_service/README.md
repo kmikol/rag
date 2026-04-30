@@ -18,19 +18,19 @@ Implemented in this skeleton:
 | `POST` | `/ingest` | Create an ingestion job |
 | `GET` | `/ingest/{job_id}` | Inspect ingestion job status |
 | `GET` | `/documents` | List ingested documents |
+| `DELETE` | `/documents/{id}` | Delete a document from the corpus |
 | `POST` | `/chat` | Generate or refuse an answer from retrieved chunks |
 | `POST` | `/search` | Return hybrid retrieval results with citation metadata |
-
-Planned:
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `DELETE` | `/documents/{id}` | Delete a document from the corpus |
 
 The chat, search, ingestion, and document endpoints require
 `Authorization: Bearer <RAG_API_KEY>`.
 `POST /ingest` accepts an optional `requested_path` JSON field for single-file
 ingestion; omitting it creates a full-scan job.
+
+`DELETE /documents/{id}` removes the document's Qdrant vectors, source file
+under `WATCH_ROOTS`, managed copy under `DOCUMENT_STORE_PATH`, and PostgreSQL
+metadata. The first successful delete returns a deletion summary. Unknown
+documents and repeated deletes return `404`.
 
 `POST /search` accepts a non-empty `query` string and optional `limit` integer
 from 1 through 100.

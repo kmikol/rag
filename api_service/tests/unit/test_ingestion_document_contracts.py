@@ -1,8 +1,10 @@
 from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 
@@ -17,7 +19,8 @@ from api_service.main import (
 )
 from api_service.retrieval import QueryEmbedding, RetrievalError
 from shared.config import get_settings
-from shared.db import metadata
+from shared.db import chunks as chunks_table
+from shared.db import document_versions, documents, metadata
 from shared.repository import ChunkRecord, MetadataRepository
 from shared.vector_index import RetrievalSourceScore, VectorSearchResult
 
@@ -85,9 +88,16 @@ class FakeVectorIndex:
         self.query_text: str | None = None
         self.limit: int | None = None
         self.error: RuntimeError | None = None
+        self.deleted_document_ids: list[str] = []
+        self.delete_error: RuntimeError | None = None
 
     def ensure_collection(self, dimension: int) -> None:
         self.ensured_dimensions.append(dimension)
+
+    def delete_by_document_id(self, document_id: str) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
+        self.deleted_document_ids.append(document_id)
 
     def search(
         self,
@@ -123,8 +133,53 @@ class FakeChatCompletionClient:
         yield "answer"
 
 
+def create_deletable_document(
+    engine: Engine,
+    watch_root: Path,
+    document_store: Path,
+    name: str = "example.md",
+) -> dict[str, Any]:
+    source_path = watch_root / name
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text("# Title\n\nDelete me.", encoding="utf-8")
+    managed_path = document_store / "aa" / name
+    managed_path.parent.mkdir(parents=True, exist_ok=True)
+    managed_path.write_text("# Title\n\nManaged copy.", encoding="utf-8")
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = repository.get_or_create_document(str(source_path))
+        version = repository.create_document_version(document["id"], "a" * 64, str(managed_path))
+        persisted_chunks = repository.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="Delete me.",
+                    source_path=str(source_path),
+                    original_filename=name,
+                )
+            ],
+        )
+        repository.mark_document_version_active(version["id"])
+
+    return {
+        "document": document,
+        "version": version,
+        "chunk": persisted_chunks[0],
+        "source_path": source_path,
+        "managed_path": managed_path,
+    }
+
+
 def test_protected_endpoints_require_api_key(client: TestClient) -> None:
     response = client.post("/ingest")
+
+    assert response.status_code == 401
+
+
+def test_delete_document_requires_api_key(client: TestClient) -> None:
+    response = client.delete("/documents/doc-1")
 
     assert response.status_code == 401
 
@@ -231,6 +286,198 @@ def test_get_documents_lists_metadata_backed_documents(
     assert listed["id"] == document["id"]
     assert listed["source_path"] == "/watch/example.md"
     assert listed["active_version"]["id"] == version["id"]
+
+
+def test_delete_document_removes_files_vectors_and_metadata(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    source_path = target["source_path"]
+    managed_path = target["managed_path"]
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": document["id"],
+        "source_path": str(source_path),
+        "deleted": True,
+        "source_file_deleted": True,
+        "managed_store_paths_deleted": [str(managed_path.resolve(strict=False))],
+    }
+    assert vector_index.deleted_document_ids == [document["id"]]
+    assert not source_path.exists()
+    assert not managed_path.exists()
+    with engine.begin() as connection:
+        assert connection.execute(select(documents)).mappings().all() == []
+        assert connection.execute(select(document_versions)).mappings().all() == []
+        assert connection.execute(select(chunks_table)).mappings().all() == []
+
+
+def test_delete_document_returns_404_for_unknown_or_repeated_delete(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: FakeVectorIndex()
+
+    first = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+    repeated = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+    missing = client.delete("/documents/missing", headers=auth_headers())
+
+    assert first.status_code == 200
+    assert repeated.status_code == 404
+    assert repeated.json()["detail"] == "Document not found"
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Document not found"
+
+
+def test_delete_document_rejects_source_path_outside_watch_roots(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    actual_root = tmp_path / "actual"
+    configured_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, actual_root, document_store)
+    document = target["document"]
+    source_path = target["source_path"]
+    managed_path = target["managed_path"]
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(configured_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 400
+    assert "outside configured watch roots" in response.json()["detail"]
+    assert vector_index.deleted_document_ids == []
+    assert source_path.exists()
+    assert managed_path.exists()
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
+
+
+def test_delete_document_preserves_metadata_and_files_when_qdrant_delete_fails(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    source_path = target["source_path"]
+    managed_path = target["managed_path"]
+    vector_index = FakeVectorIndex()
+    vector_index.delete_error = RuntimeError("qdrant unavailable")
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Document deletion failed."
+    assert source_path.exists()
+    assert managed_path.exists()
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
+
+
+def test_delete_document_returns_400_when_local_cleanup_target_is_not_file(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    managed_path = target["managed_path"]
+    managed_path.unlink()
+    managed_path.mkdir()
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 400
+    assert "Deletion target is not a file" in response.json()["detail"]
+    assert vector_index.deleted_document_ids == []
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
+
+
+def test_delete_document_returns_500_when_local_cleanup_unlink_fails(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    source_path = target["source_path"]
+    managed_path = target["managed_path"]
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    original_unlink = Path.unlink
+
+    def raising_unlink(path: Path, missing_ok: bool = False) -> None:
+        if path == source_path:
+            raise OSError("permission denied")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", raising_unlink)
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Document deletion failed."
+    assert vector_index.deleted_document_ids == [document["id"]]
+    assert source_path.exists()
+    assert managed_path.exists()
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
 
 
 def test_search_returns_citation_ready_chunks(

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ingestion_worker.parsing import ParserRegistry, default_parser_registry
+from shared.config import parse_path_list
 
 
 @dataclass(frozen=True)
@@ -50,9 +51,7 @@ class ManagedCopy:
 
 def parse_watch_roots(value: str) -> tuple[Path, ...]:
     """Parse the WATCH_ROOTS environment value as an OS path list."""
-    return tuple(
-        Path(part.strip()).expanduser() for part in value.split(os.pathsep) if part.strip()
-    )
+    return parse_path_list(value)
 
 
 def compute_sha256(path: Path) -> str:

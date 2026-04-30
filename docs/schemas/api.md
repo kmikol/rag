@@ -17,6 +17,12 @@ Search schemas:
 | `RetrievalSourceScore` | Per-source retrieval provenance: `source`, `rank`, and optional raw `score` |
 | `SearchResult` | Citation-ready chunk result with normalized fused score, retrieval provenance, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
 
+Document schemas:
+
+| Schema | Purpose |
+|--------|---------|
+| `DocumentDeleteResponse` | Deletion summary for `DELETE /documents/{id}` with the document id, source path, deletion flag, source-file deletion status, and managed-copy paths removed |
+
 Chat schemas:
 
 | Schema | Purpose |
@@ -38,3 +44,9 @@ Minimum planned API surface:
 | `embedding-service` | `POST /embed/batch` | Embed document chunks in batches |
 | `embedding-service` | `GET /health` | Health check |
 | `embedding-service` | `GET /model-info` | Current embedding model identity |
+
+`DELETE /documents/{id}` requires bearer authentication. On first success it
+returns `200` with `DocumentDeleteResponse` after removing Qdrant vectors, the
+source file under `WATCH_ROOTS`, managed copies under `DOCUMENT_STORE_PATH`, and
+PostgreSQL metadata. Unknown documents and repeated deletes return `404` with
+`"Document not found"`.

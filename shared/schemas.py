@@ -62,6 +62,14 @@ class DocumentListResponse(BaseModel):
     documents: list[DocumentResponse]
 
 
+class DocumentDeleteResponse(BaseModel):
+    id: str
+    source_path: str
+    deleted: Literal[True]
+    source_file_deleted: bool
+    managed_store_paths_deleted: list[str]
+
+
 class QueryLimitRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=100)

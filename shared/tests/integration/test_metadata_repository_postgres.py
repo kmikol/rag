@@ -4,6 +4,7 @@ from uuid import uuid4
 from alembic import command
 from alembic.config import Config
 
+from shared.db import chunks, document_versions, documents
 from shared.repository import ChunkRecord, MetadataRepository, create_metadata_engine
 
 
@@ -86,3 +87,46 @@ def test_get_or_create_document_uses_existing_source_path() -> None:
 
         assert second["id"] == first["id"]
         assert second["source_path"] == source_path
+
+
+def test_delete_document_hard_deletes_document_versions_and_chunks() -> None:
+    upgrade_database()
+    engine = create_metadata_engine(os.environ["POSTGRES_URL"])
+    unique = uuid4().hex
+    source_path = f"/watch/{unique}.md"
+
+    with engine.begin() as connection:
+        repo = MetadataRepository(connection)
+        document = repo.get_or_create_document(source_path)
+        version = repo.create_document_version(document["id"], f"{unique}{unique}")
+        repo.create_chunks(
+            document["id"],
+            version["id"],
+            [
+                ChunkRecord(
+                    text="PostgreSQL deletion chunk",
+                    source_path=source_path,
+                    original_filename=f"{unique}.md",
+                )
+            ],
+        )
+
+        assert repo.delete_document(document["id"]) is True
+        assert (
+            connection.execute(
+                documents.select().where(documents.c.id == document["id"])
+            ).one_or_none()
+            is None
+        )
+        assert (
+            connection.execute(
+                document_versions.select().where(document_versions.c.document_id == document["id"])
+            ).one_or_none()
+            is None
+        )
+        assert (
+            connection.execute(
+                chunks.select().where(chunks.c.document_id == document["id"])
+            ).one_or_none()
+            is None
+        )

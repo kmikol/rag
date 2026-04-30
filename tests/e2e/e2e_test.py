@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 from alembic import command
@@ -13,6 +14,9 @@ from shared.db import chunks
 from shared.repository import MetadataRepository, create_metadata_engine
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "test_doc.md"
+SECOND_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "orbital-seed-catalog.md"
+MARKER_QUERY = "What color is the calibration marker?"
+BEACON_QUERY = "seed catalog recovery tone silver chime"
 
 
 def test_rag_pipeline_end_to_end() -> None:
@@ -67,30 +71,40 @@ def test_rag_pipeline_end_to_end() -> None:
     assert weak_chat_body["refused"] is True
     assert weak_chat_body["answer"] is None
 
+    empty_marker_search = _search(api_url, headers, MARKER_QUERY)
+    empty_beacon_search = _search(api_url, headers, BEACON_QUERY)
+
+    assert empty_marker_search["results"] == []
+    assert empty_beacon_search["results"] == []
+
     # ---------------------------------------------------------------------
-    # 3. Place a source document in the authoritative watch root
+    # 3. Place source documents in the authoritative watch root
     # ---------------------------------------------------------------------
     #
     # Watch roots are the source of truth for corpus membership. The test copies
-    # a longer synthetic Markdown document into the E2E watch volume. It does
-    # not write directly to PostgreSQL or Qdrant; those stores must be populated
-    # by the same ingestion path used in real deployments.
+    # two synthetic Markdown documents into the E2E watch volume. It does not
+    # write directly to PostgreSQL or Qdrant; those stores must be populated by
+    # the same ingestion path used in real deployments.
     watch_root = Path(os.environ["WATCH_ROOTS"])
     watch_root.mkdir(parents=True, exist_ok=True)
     source = watch_root / "test_doc.md"
+    second_source = watch_root / "orbital-seed-catalog.md"
     source.write_text(FIXTURE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    second_source.write_text(SECOND_FIXTURE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
     assert source.exists()
+    assert second_source.exists()
     assert "cobalt blue" in source.read_text(encoding="utf-8").lower()
+    assert "silver chime" in second_source.read_text(encoding="utf-8").lower()
 
     # ---------------------------------------------------------------------
-    # 4. Create an ingestion job through api-service
+    # 4. Create ingestion jobs through api-service
     # ---------------------------------------------------------------------
     #
     # The public API does not ingest files inline. It creates an ingestion job
     # in PostgreSQL and returns quickly. The worker is responsible for claiming
     # and processing that job. Passing `requested_path` keeps this E2E focused
-    # on one known fixture rather than a full watch-root scan.
+    # on known fixtures rather than a full watch-root scan.
     ingest_response = httpx.post(
         f"{api_url}/ingest",
         headers=headers,
@@ -104,8 +118,21 @@ def test_rag_pipeline_end_to_end() -> None:
     assert ingest_body["status"] == "pending"
     assert ingest_body["requested_path"] == str(source)
 
+    second_ingest_response = httpx.post(
+        f"{api_url}/ingest",
+        headers=headers,
+        json={"requested_path": str(second_source)},
+        timeout=30,
+    )
+
+    assert second_ingest_response.status_code == 201, second_ingest_response.text
+
+    second_ingest_body = second_ingest_response.json()
+    assert second_ingest_body["status"] == "pending"
+    assert second_ingest_body["requested_path"] == str(second_source)
+
     # ---------------------------------------------------------------------
-    # 5. Process the job through the ingestion worker
+    # 5. Process the jobs through the ingestion worker
     # ---------------------------------------------------------------------
     #
     # `run_next_job()` is the worker's one-shot entry point. It claims the
@@ -117,31 +144,40 @@ def test_rag_pipeline_end_to_end() -> None:
     assert worker_result.status == "active"
     assert worker_result.processed_items == 1
 
+    second_worker_result = run_next_job(worker_id="e2e-worker")
+
+    assert second_worker_result.status == "active"
+    assert second_worker_result.processed_items == 1
+
     # ---------------------------------------------------------------------
     # 6. Verify persisted ingestion state in PostgreSQL
     # ---------------------------------------------------------------------
     #
-    # This checks that ingestion did more than return success. The document and
+    # This checks that ingestion did more than return success. Each document and
     # active version must be marked active, and the fixture must produce at least
     # five stored chunks. That proves the parser/chunker/repository path ran
     # against the temporary test database.
     engine = create_metadata_engine(os.environ["POSTGRES_URL"])
     with engine.begin() as connection:
         repository = MetadataRepository(connection)
-        document_rows = [
-            row
-            for row in repository.list_documents()
-            if row["document"]["source_path"] == str(source)
-        ]
+        rows_by_source_path = {
+            row["document"]["source_path"]: row for row in repository.list_documents()
+        }
 
-        assert len(document_rows) == 1
+        assert str(source) in rows_by_source_path
+        assert str(second_source) in rows_by_source_path
 
-        document = document_rows[0]["document"]
-        active_version = document_rows[0]["active_version"]
+        document = rows_by_source_path[str(source)]["document"]
+        active_version = rows_by_source_path[str(source)]["active_version"]
+        second_document = rows_by_source_path[str(second_source)]["document"]
+        second_active_version = rows_by_source_path[str(second_source)]["active_version"]
 
         assert document["state"] == "active"
         assert active_version is not None
         assert active_version["state"] == "active"
+        assert second_document["state"] == "active"
+        assert second_active_version is not None
+        assert second_active_version["state"] == "active"
 
         chunk_count = connection.execute(
             select(func.count())
@@ -151,6 +187,14 @@ def test_rag_pipeline_end_to_end() -> None:
 
         assert chunk_count >= 5
 
+        second_chunk_count = connection.execute(
+            select(func.count())
+            .select_from(chunks)
+            .where(chunks.c.document_version_id == second_active_version["id"])
+        ).scalar_one()
+
+        assert second_chunk_count >= 1
+
     # ---------------------------------------------------------------------
     # 7. Search the indexed corpus through api-service
     # ---------------------------------------------------------------------
@@ -159,18 +203,13 @@ def test_rag_pipeline_end_to_end() -> None:
     # for nearby vectors, loads active chunk metadata from PostgreSQL, and
     # returns citation-ready results. The top result should contain the known
     # synthetic fact from the fixture.
-    search_response = httpx.post(
-        f"{api_url}/search",
-        headers=headers,
-        json={"query": "What color is the calibration marker?", "limit": 3},
-        timeout=60,
-    )
-
-    assert search_response.status_code == 200, search_response.text
-
-    search_body = search_response.json()
+    search_body = _search(api_url, headers, MARKER_QUERY)
     assert search_body["results"]
     assert "cobalt blue" in search_body["results"][0]["text"].lower()
+
+    second_search_body = _search(api_url, headers, BEACON_QUERY)
+    assert second_search_body["results"]
+    assert "silver chime" in second_search_body["results"][0]["text"].lower()
 
     # ---------------------------------------------------------------------
     # 8. Generate a grounded answer through `/chat`
@@ -183,7 +222,7 @@ def test_rag_pipeline_end_to_end() -> None:
     chat_response = httpx.post(
         f"{api_url}/chat",
         headers=headers,
-        json={"query": "What color is the calibration marker?", "limit": 3},
+        json={"query": MARKER_QUERY, "limit": 3},
         timeout=240,
     )
 
@@ -197,6 +236,52 @@ def test_rag_pipeline_end_to_end() -> None:
 
     assert "cobalt" in answer
     assert "blue" in answer
+
+    # ---------------------------------------------------------------------
+    # 9. Delete one document through the API and verify retrieval updates
+    # ---------------------------------------------------------------------
+    #
+    # Explicit deletion must remove the selected document from the authoritative
+    # source volume, PostgreSQL metadata, managed storage, and Qdrant. The first
+    # document should remain searchable, while the deleted document should no
+    # longer provide citable evidence for chat.
+    delete_response = httpx.delete(
+        f"{api_url}/documents/{second_document['id']}",
+        headers=headers,
+        timeout=60,
+    )
+
+    assert delete_response.status_code == 200, delete_response.text
+    delete_body = delete_response.json()
+    assert delete_body["id"] == second_document["id"]
+    assert delete_body["source_file_deleted"] is True
+    assert delete_body["managed_store_paths_deleted"]
+    assert not second_source.exists()
+
+    remaining_search_body = _search(api_url, headers, MARKER_QUERY)
+    assert remaining_search_body["results"]
+    assert "cobalt blue" in remaining_search_body["results"][0]["text"].lower()
+
+    deleted_search_body = _search(api_url, headers, BEACON_QUERY)
+    assert all(
+        result["document_id"] != second_document["id"] for result in deleted_search_body["results"]
+    )
+    assert all(
+        "silver chime" not in result["text"].lower() for result in deleted_search_body["results"]
+    )
+
+    deleted_chat_response = httpx.post(
+        f"{api_url}/chat",
+        headers=headers,
+        json={"query": BEACON_QUERY, "limit": 3},
+        timeout=60,
+    )
+
+    assert deleted_chat_response.status_code == 200, deleted_chat_response.text
+
+    deleted_chat_body = deleted_chat_response.json()
+    assert deleted_chat_body["refused"] is True
+    assert deleted_chat_body["answer"] is None
 
 
 def _wait_for_api(api_url: str) -> None:
@@ -212,3 +297,16 @@ def _wait_for_api(api_url: str) -> None:
             last_error = f"request failed: {error!r}"
         time.sleep(1)
     raise AssertionError(f"api-service did not become healthy: {last_error}")
+
+
+def _search(api_url: str, headers: dict[str, str], query: str) -> dict[str, Any]:
+    response = httpx.post(
+        f"{api_url}/search",
+        headers=headers,
+        json={"query": query, "limit": 3},
+        timeout=60,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert isinstance(body, dict)
+    return body

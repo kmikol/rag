@@ -1,8 +1,8 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
-from shared.db import metadata
+from shared.db import chunks, document_versions, documents, metadata
 from shared.repository import ChunkRecord, MetadataRepository, validate_state
 
 
@@ -235,6 +235,44 @@ def test_get_active_chunks_by_ids_returns_only_active_version_chunks() -> None:
 
             assert list(chunks) == [second_chunks[0]["id"]]
             assert chunks[second_chunks[0]["id"]]["text"] == "Current chunk"
+    finally:
+        connection.close()
+
+
+def test_delete_document_hard_deletes_versions_and_chunks() -> None:
+    repo, connection = open_repository()
+    try:
+        with connection.begin():
+            document = repo.get_or_create_document("/watch/example.md")
+            version = repo.create_document_version(
+                document["id"],
+                "a" * 64,
+                "/documents/aa/example.md",
+            )
+            repo.create_chunks(
+                document["id"],
+                version["id"],
+                [
+                    ChunkRecord(
+                        text="Chunk text",
+                        source_path="/watch/example.md",
+                        original_filename="example.md",
+                    )
+                ],
+            )
+
+            deletion_target = repo.get_document_deletion_target(document["id"])
+            deleted = repo.delete_document(document["id"])
+
+            assert deletion_target is not None
+            assert deletion_target["document"]["source_path"] == "/watch/example.md"
+            assert deletion_target["managed_store_paths"] == ["/documents/aa/example.md"]
+            assert deleted is True
+            assert connection.execute(select(documents)).mappings().all() == []
+            assert connection.execute(select(document_versions)).mappings().all() == []
+            assert connection.execute(select(chunks)).mappings().all() == []
+            assert repo.delete_document(document["id"]) is False
+            assert repo.get_document_deletion_target(document["id"]) is None
     finally:
         connection.close()
 

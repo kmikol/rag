@@ -42,6 +42,9 @@ services:
       - config/env/api-service.env
     environment:
       RAG_API_KEY: test-token
+    volumes:
+      - test-watch:/watch
+      - test-documents:/documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +87,11 @@ services:
       EMBEDDING_MODEL_NAME: embeddinggemma
       POSTGRES_URL: postgresql+psycopg://rag:rag@postgres:5432/rag
       QDRANT_URL: http://qdrant:6333
+      WATCH_ROOTS: /watch
+      DOCUMENT_STORE_PATH: /documents
+    volumes:
+      - test-watch:/watch
+      - test-documents:/documents
     command: >
       pytest
       api_service/tests/integration/
@@ -95,3 +103,7 @@ services:
 networks:
   default:
     name: rag-test
+
+volumes:
+  test-watch:
+  test-documents:
