@@ -1,9 +1,12 @@
+import json
+import logging
 from collections.abc import Iterator
 from functools import lru_cache
 from secrets import compare_digest
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
@@ -47,6 +50,8 @@ configure_logging()
 
 app = FastAPI(title="Personal RAG API Service")
 bearer_auth = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
+CHAT_GENERATION_ERROR_DETAIL = "Chat generation failed."
 
 
 @lru_cache
@@ -180,7 +185,7 @@ def chat(
     embedding_client: Annotated[QueryEmbeddingClient, Depends(get_query_embedding_client)],
     vector_index: Annotated[VectorIndex, Depends(get_vector_index)],
     chat_client: Annotated[LLMClient, Depends(get_chat_completion_client)],
-) -> ChatResponse:
+) -> ChatResponse | StreamingResponse:
     settings = get_settings()
     retriever = SearchRetriever(
         embedding_client=embedding_client,
@@ -207,6 +212,18 @@ def chat(
         ),
     )
     if refusal_reason is not None:
+        if request.stream:
+            event = {
+                "type": "done",
+                "answer": None,
+                "citations": [citation.model_dump() for citation in grounding_citations],
+                "refused": True,
+                "refusal_reason": refusal_reason,
+            }
+            return StreamingResponse(
+                iter([f"data: {json.dumps(event)}\n\n"]),
+                media_type="text/event-stream",
+            )
         return ChatResponse(
             answer=None,
             citations=grounding_citations,
@@ -214,18 +231,47 @@ def chat(
             refusal_reason=refusal_reason,
         )
 
+    messages = build_grounded_messages(request.query, grounding_citations, grounding_config)
+    options = GenerationOptions(
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+    )
+
+    if request.stream:
+
+        def event_stream() -> Iterator[str]:
+            answer_parts: list[str] = []
+            try:
+                for token in chat_client.stream_complete(messages, options):
+                    answer_parts.append(token)
+                    yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+            except GenerationError:
+                logger.exception("Chat stream generation failed.")
+                yield (
+                    f"data: "
+                    f"{json.dumps({'type': 'error', 'detail': CHAT_GENERATION_ERROR_DETAIL})}"
+                    f"\n\n"
+                )
+                return
+            final_answer = "".join(answer_parts)
+            done_event = {
+                "type": "done",
+                "answer": final_answer,
+                "citations": [citation.model_dump() for citation in grounding_citations],
+                "refused": False,
+                "refusal_reason": None,
+            }
+            yield f"data: {json.dumps(done_event)}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
     try:
-        answer = chat_client.complete(
-            build_grounded_messages(request.query, grounding_citations, grounding_config),
-            GenerationOptions(
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-            ),
-        )
+        answer = chat_client.complete(messages, options)
     except GenerationError as error:
+        logger.exception("Chat generation failed.")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
+            detail=CHAT_GENERATION_ERROR_DETAIL,
         ) from error
 
     return ChatResponse(

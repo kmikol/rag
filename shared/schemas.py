@@ -91,7 +91,7 @@ class SearchResponse(BaseModel):
 
 
 class ChatRequest(QueryLimitRequest):
-    pass
+    stream: bool = False
 
 
 class ChatResponse(BaseModel):

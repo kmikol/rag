@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Protocol
 from urllib import error, request
@@ -27,6 +28,13 @@ class LLMClient(Protocol):
         options: GenerationOptions | None = None,
     ) -> str:
         """Generate one assistant message from chat messages."""
+
+    def stream_complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> Iterator[str]:
+        """Yield assistant message chunks from one streaming request."""
 
 
 @dataclass(frozen=True)
@@ -104,6 +112,58 @@ class OpenAICompatibleLLMClient:
 
         return _parse_chat_completion(body)
 
+    def stream_complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> Iterator[str]:
+        """Yield assistant text chunks from an OpenAI-compatible stream."""
+        request_body: dict[str, object] = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": True,
+        }
+        if options is not None:
+            if options.temperature is not None:
+                request_body["temperature"] = options.temperature
+            if options.max_tokens is not None:
+                request_body["max_tokens"] = options.max_tokens
+
+        payload = json.dumps(request_body).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        req = request.Request(
+            url=self.chat_completions_url,
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                for raw_line in response:  # type: ignore[attr-defined]
+                    if not isinstance(raw_line, bytes):
+                        continue
+                    line = raw_line.decode("utf-8").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_payload = line.removeprefix("data:").strip()
+                    if data_payload == "[DONE]":
+                        break
+                    try:
+                        body = json.loads(data_payload)
+                    except json.JSONDecodeError as exc:
+                        raise GenerationError("LLM chat stream returned invalid JSON.") from exc
+                    token = _parse_chat_stream_chunk(body)
+                    if token:
+                        yield token
+        except error.HTTPError as exc:
+            detail = _read_http_error_detail(exc)
+            raise GenerationError(f"LLM chat HTTP error: {detail}") from exc
+        except error.URLError as exc:
+            raise GenerationError(f"LLM chat unavailable: {exc.reason}") from exc
+
 
 class GoogleGenerateContentLLMClient:
     """HTTP client for Google AI Studio's native generateContent endpoint."""
@@ -148,6 +208,27 @@ class GoogleGenerateContentLLMClient:
             raise GenerationError(f"Google generateContent unavailable: {exc.reason}") from exc
 
         return _parse_google_generate_content(body)
+
+    def stream_complete(
+        self,
+        messages: list[dict[str, str]],
+        options: GenerationOptions | None = None,
+    ) -> Iterator[str]:
+        raise GenerationError("Google generateContent streaming is not implemented.")
+
+
+def _parse_chat_stream_chunk(body: dict[str, object]) -> str:
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return ""
+    delta = first_choice.get("delta")
+    if not isinstance(delta, dict):
+        return ""
+    content = delta.get("content")
+    return content if isinstance(content, str) else ""
 
 
 def assess_answerability(

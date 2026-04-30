@@ -188,3 +188,40 @@ def test_google_generate_content_client_rejects_missing_text(
             180,
             "secret-token",
         ).complete([{"role": "user", "content": "hello"}])
+
+
+class FakeStreamingResponse:
+    def __init__(self, lines: list[bytes]) -> None:
+        self.lines = lines
+
+    def __enter__(self) -> FakeStreamingResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def __iter__(self):
+        return iter(self.lines)
+
+
+def test_openai_chat_client_streams_token_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_urlopen(*args: object, **kwargs: object) -> FakeStreamingResponse:
+        return FakeStreamingResponse(
+            [
+                b'data: {"choices":[{"delta":{"content":"Alpha "}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
+                b"data: [DONE]\n",
+            ]
+        )
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    chunks = list(
+        OpenAICompatibleLLMClient(
+            "http://llm.example/v1/chat/completions",
+            model_name="gemma3:4b",
+            timeout_seconds=120,
+        ).stream_complete([{"role": "user", "content": "hello"}])
+    )
+
+    assert chunks == ["Alpha ", "answer"]
