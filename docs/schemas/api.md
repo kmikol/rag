@@ -16,6 +16,11 @@ Search schemas:
 | `SearchResponse` | Search response containing ranked `results` |
 | `RetrievalSourceScore` | Per-source retrieval provenance: `source`, `rank`, and optional raw `score` |
 | `SearchResult` | Citation-ready chunk result with normalized fused score, retrieval provenance, text, document/version/chunk ids, source path, filename, page/heading metadata, and text offsets |
+
+Document schemas:
+
+| Schema | Purpose |
+|--------|---------|
 | `DocumentDeleteResponse` | Deletion summary for `DELETE /documents/{id}` with the document id, source path, deletion flag, source-file deletion status, and managed-copy paths removed |
 
 Chat schemas:

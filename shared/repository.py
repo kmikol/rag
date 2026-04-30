@@ -381,13 +381,17 @@ class MetadataRepository:
             )
         return {"document": dict(document), "active_version": dict(version) if version else None}
 
-    def get_document_deletion_target(self, document_id: str) -> dict[str, Any] | None:
+    def get_document_deletion_target(
+        self,
+        document_id: str,
+        for_update: bool = False,
+    ) -> dict[str, Any] | None:
         """Return document metadata and managed copy paths needed for hard deletion."""
-        document = (
-            self.connection.execute(select(documents).where(documents.c.id == document_id))
-            .mappings()
-            .one_or_none()
-        )
+        document_query = select(documents).where(documents.c.id == document_id)
+        if for_update:
+            document_query = document_query.with_for_update()
+
+        document = self.connection.execute(document_query).mappings().one_or_none()
         if document is None:
             return None
 

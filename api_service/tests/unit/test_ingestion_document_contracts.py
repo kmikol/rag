@@ -412,6 +412,74 @@ def test_delete_document_preserves_metadata_and_files_when_qdrant_delete_fails(
         assert repository.get_document_deletion_target(document["id"]) is not None
 
 
+def test_delete_document_returns_400_when_local_cleanup_target_is_not_file(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    managed_path = target["managed_path"]
+    managed_path.unlink()
+    managed_path.mkdir()
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 400
+    assert "Deletion target is not a file" in response.json()["detail"]
+    assert vector_index.deleted_document_ids == []
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
+
+
+def test_delete_document_returns_500_when_local_cleanup_unlink_fails(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    watch_root = tmp_path / "watch"
+    document_store = tmp_path / "documents"
+    target = create_deletable_document(engine, watch_root, document_store)
+    document = target["document"]
+    source_path = target["source_path"]
+    managed_path = target["managed_path"]
+    vector_index = FakeVectorIndex()
+    monkeypatch.setenv("WATCH_ROOTS", str(watch_root))
+    monkeypatch.setenv("DOCUMENT_STORE_PATH", str(document_store))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_vector_index] = lambda: vector_index
+
+    original_unlink = Path.unlink
+
+    def raising_unlink(path: Path, missing_ok: bool = False) -> None:
+        if path == source_path:
+            raise OSError("permission denied")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", raising_unlink)
+
+    response = client.delete(f"/documents/{document['id']}", headers=auth_headers())
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Document deletion failed."
+    assert vector_index.deleted_document_ids == [document["id"]]
+    assert source_path.exists()
+    assert managed_path.exists()
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        assert repository.get_document_deletion_target(document["id"]) is not None
+
+
 def test_search_returns_citation_ready_chunks(
     client: TestClient,
     engine: Engine,

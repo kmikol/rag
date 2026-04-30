@@ -1,4 +1,6 @@
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +49,13 @@ class AppSettings(BaseSettings):
     chat_min_usable_chunks: int = Field(default=1, ge=1, alias="CHAT_MIN_USABLE_CHUNKS")
     chat_max_context_chunks: int = Field(default=5, ge=1, le=100, alias="CHAT_MAX_CONTEXT_CHUNKS")
     chat_max_chunk_chars: int = Field(default=2000, ge=1, alias="CHAT_MAX_CHUNK_CHARS")
+
+
+def parse_path_list(value: str) -> tuple[Path, ...]:
+    """Parse an OS path-list environment value into expanded paths."""
+    return tuple(
+        Path(part.strip()).expanduser() for part in value.split(os.pathsep) if part.strip()
+    )
 
 
 @lru_cache
