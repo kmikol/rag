@@ -11,10 +11,10 @@ Responsibilities:
 - Return citations with document, version, chunk, and source metadata.
 
 `POST /search` embeds the query through `embedding-service`, asks Qdrant for
-dense vector, lexical sparse-vector, and text-index matches, and merges the
-candidates with normalized reciprocal rank fusion. PostgreSQL hydrates only
-active chunk metadata after Qdrant matching, so stale document versions remain
-excluded from API results.
+dense vector, lexical sparse-vector, and sparse-ranked text-filtered matches,
+and merges the candidates with normalized reciprocal rank fusion. PostgreSQL
+hydrates only active chunk metadata after Qdrant matching, so stale document
+versions remain excluded from API results.
 
 Qdrant collections must use named vectors `dense` and `sparse` plus a text
 payload index on chunk text. Legacy unnamed-vector collections must be recreated

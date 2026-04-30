@@ -34,7 +34,8 @@ Hybrid retrieval will be implemented with Qdrant as the only search backend:
   named vector `dense`.
 - Lexical sparse retrieval uses a deterministic local tokenizer and hashed term
   sparse vector stored as Qdrant named vector `sparse` with Qdrant IDF scoring.
-- Full-text matching uses a Qdrant text payload index over chunk text.
+- Full-text matching uses a Qdrant text payload index over chunk text as a
+  filter on sparse-ranked candidates.
 - PostgreSQL remains the source of truth for metadata, document lifecycle state,
   and citation hydration, but it will not provide sparse retrieval.
 

@@ -227,11 +227,14 @@ class QdrantVectorIndex:
         return list(response.points)
 
     def _query_text(self, query_text: str, limit: int) -> list[Any]:
-        if not tokenize_sparse_text(query_text):
+        sparse_vector = sparse_vector_from_text(query_text)
+        if not sparse_vector.indices:
             return []
-        records, _ = self.client.scroll(
+        response = self.client.query_points(
             collection_name=self.collection_name,
-            scroll_filter=models.Filter(
+            query=sparse_vector,
+            using=SPARSE_VECTOR_NAME,
+            query_filter=models.Filter(
                 must=[
                     models.FieldCondition(
                         key=TEXT_PAYLOAD_FIELD,
@@ -243,7 +246,7 @@ class QdrantVectorIndex:
             with_payload=True,
             with_vectors=False,
         )
-        return sorted(records, key=lambda point: str(point.id))
+        return list(response.points)
 
     def _fuse_results(
         self,

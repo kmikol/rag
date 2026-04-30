@@ -29,7 +29,6 @@ class FakeQdrantClient:
         self.upserted: dict[str, object] | None = None
         self.deleted: dict[str, object] | None = None
         self.queries: list[dict[str, object]] = []
-        self.scrolled: dict[str, object] | None = None
 
     def collection_exists(self, collection_name: str) -> bool:
         return self._collection_exists
@@ -111,23 +110,33 @@ class FakeQdrantClient:
         limit: int,
         with_payload: bool,
         with_vectors: bool,
+        query_filter: models.Filter | None = None,
     ) -> SimpleNamespace:
         self.queries.append(
             {
                 "collection_name": collection_name,
                 "query": query,
                 "using": using,
+                "query_filter": query_filter,
                 "limit": limit,
                 "with_payload": with_payload,
                 "with_vectors": with_vectors,
             }
         )
-        chunk_id = "chunk-1" if using == DENSE_VECTOR_NAME else "chunk-2"
+        if using == DENSE_VECTOR_NAME:
+            chunk_id = "chunk-1"
+            score = 0.87
+        elif query_filter is None:
+            chunk_id = "chunk-2"
+            score = 0.5
+        else:
+            chunk_id = "chunk-3"
+            score = 0.4
         return SimpleNamespace(
             points=[
                 SimpleNamespace(
                     id=chunk_id,
-                    score=0.87 if using == DENSE_VECTOR_NAME else 0.5,
+                    score=score,
                     payload={
                         "document_id": "doc-1",
                         "document_version_id": "version-1",
@@ -135,35 +144,6 @@ class FakeQdrantClient:
                     },
                 )
             ]
-        )
-
-    def scroll(
-        self,
-        collection_name: str,
-        scroll_filter: models.Filter,
-        limit: int,
-        with_payload: bool,
-        with_vectors: bool,
-    ) -> tuple[list[SimpleNamespace], None]:
-        self.scrolled = {
-            "collection_name": collection_name,
-            "scroll_filter": scroll_filter,
-            "limit": limit,
-            "with_payload": with_payload,
-            "with_vectors": with_vectors,
-        }
-        return (
-            [
-                SimpleNamespace(
-                    id="chunk-3",
-                    payload={
-                        "document_id": "doc-1",
-                        "document_version_id": "version-1",
-                        "chunk_id": "chunk-3",
-                    },
-                )
-            ],
-            None,
         )
 
 
@@ -329,12 +309,19 @@ def test_search_fuses_dense_sparse_and_text_results_with_provenance() -> None:
         "collection_name": "test_chunks",
         "query": [0.1, 0.2],
         "using": DENSE_VECTOR_NAME,
+        "query_filter": None,
         "limit": 3,
         "with_payload": True,
         "with_vectors": False,
     }
     assert client.queries[1]["using"] == SPARSE_VECTOR_NAME
-    assert client.scrolled is not None
+    assert client.queries[1]["query_filter"] is None
+    assert client.queries[2]["using"] == SPARSE_VECTOR_NAME
+    assert isinstance(client.queries[2]["query_filter"], models.Filter)
+    text_filter_condition = first_filter_condition(client.queries[2]["query_filter"])
+    assert text_filter_condition.key == TEXT_PAYLOAD_FIELD
+    text_match = cast(models.MatchText, text_filter_condition.match)
+    assert text_match.text == "alpha"
     assert [result.chunk_id for result in results] == ["chunk-1", "chunk-2", "chunk-3"]
     assert results[0].document_id == "doc-1"
     assert results[0].document_version_id == "version-1"
@@ -343,7 +330,7 @@ def test_search_fuses_dense_sparse_and_text_results_with_provenance() -> None:
     assert results[0].retrieval_sources[0].rank == 1
     assert results[0].retrieval_sources[0].score == 0.87
     assert results[2].retrieval_sources[0].source == "text"
-    assert results[2].retrieval_sources[0].score is None
+    assert results[2].retrieval_sources[0].score == 0.4
 
 
 def test_fusion_handles_single_source_results() -> None:

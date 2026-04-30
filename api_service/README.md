@@ -35,10 +35,10 @@ ingestion; omitting it creates a full-scan job.
 `POST /search` accepts a non-empty `query` string and optional `limit` integer
 from 1 through 100.
 It embeds the query through `embedding-service`, searches the configured Qdrant
-collection with dense, lexical sparse, and text-index matching, loads active
-chunk metadata from PostgreSQL, and returns ranked results with citation fields
-and retrieval provenance. PostgreSQL hydrates active metadata only; sparse and
-full-text matching live in Qdrant.
+collection with dense vectors, lexical sparse vectors, and sparse-ranked
+text-filtered matching, loads active chunk metadata from PostgreSQL, and returns
+ranked results with citation fields and retrieval provenance. PostgreSQL
+hydrates active metadata only; sparse and full-text matching live in Qdrant.
 
 `POST /chat` accepts the same non-empty `query` string and optional `limit`
 integer as search. It runs retrieval first, applies configurable answerability
