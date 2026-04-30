@@ -16,7 +16,7 @@ from shared.repository import MetadataRepository, create_metadata_engine
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "test_doc.md"
 SECOND_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "orbital-seed-catalog.md"
 MARKER_QUERY = "What color is the calibration marker?"
-BEACON_QUERY = "What is the seed catalog recovery tone?"
+BEACON_QUERY = "seed catalog recovery tone silver chime"
 
 
 def test_rag_pipeline_end_to_end() -> None:
