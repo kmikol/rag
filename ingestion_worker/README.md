@@ -76,7 +76,7 @@ nightly cron or systemd timer can call:
 ```bash
 curl -fsS -X POST \
   -H "Authorization: Bearer ${RAG_API_KEY}" \
-  "${RAG_API_URL}/ingest"
+  "${RAG_API_URL}/ingest" && \
 python -m ingestion_worker.worker --fail-on-error
 ```
 

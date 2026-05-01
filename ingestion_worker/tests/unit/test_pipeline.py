@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -313,7 +314,7 @@ def test_full_scan_processes_healthy_root_when_another_root_is_unhealthy(
     missing_source = missing_root / "missing.md"
     managed_path = document_store / "aa" / "managed.md"
     settings = make_settings(tmp_path)
-    settings.watch_roots = f"{healthy_root}:{missing_root}"
+    settings.watch_roots = os.pathsep.join((str(healthy_root), str(missing_root)))
     embedding_client = FakeEmbeddingClient()
     vector_index = FakeVectorIndex()
 

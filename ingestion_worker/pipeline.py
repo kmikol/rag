@@ -21,6 +21,13 @@ from ingestion_worker.filesystem import (
 )
 from ingestion_worker.parsing import ParserRegistry, default_parser_registry
 from shared.config import AppSettings, get_settings
+from shared.file_cleanup import (
+    delete_unique_files,
+    is_path_under_roots,
+    resolve_path,
+    validate_file_cleanup_targets,
+    validate_path_under_root,
+)
 from shared.repository import ChunkRecord, MetadataRepository, create_metadata_engine
 from shared.vector_index import ChunkVector, QdrantVectorIndex
 
@@ -355,7 +362,7 @@ def _reconcile_missing_source_files(
             continue
 
         source_path = Path(str(document["source_path"])).expanduser()
-        if not _is_path_under_roots(source_path, healthy_roots):
+        if not is_path_under_roots(source_path, healthy_roots):
             continue
         if source_path.exists():
             continue
@@ -365,13 +372,13 @@ def _reconcile_missing_source_files(
             continue
 
         managed_files = [
-            _validate_path_under_root(path, document_store_root)
+            validate_path_under_root(path, document_store_root)
             for path in deletion_target["managed_store_paths"]
         ]
-        _validate_file_cleanup_targets(managed_files)
+        validate_file_cleanup_targets(managed_files)
 
         vector_index.delete_by_document_id(str(document["id"]))
-        _delete_unique_files(managed_files)
+        delete_unique_files(managed_files)
         repository.delete_document(str(document["id"]))
         reconciled += 1
 
@@ -382,59 +389,8 @@ def _healthy_roots(
     roots: tuple[Path, ...],
     unhealthy_roots: tuple[UnhealthyWatchRoot, ...],
 ) -> tuple[Path, ...]:
-    unhealthy = {_resolve_path(root.root_path) for root in unhealthy_roots}
-    return tuple(root for root in roots if _resolve_path(root) not in unhealthy)
-
-
-def _is_path_under_roots(path: Path, roots: tuple[Path, ...]) -> bool:
-    return any(_is_path_under_root(path, root) for root in roots)
-
-
-def _is_path_under_root(path: Path, root: Path) -> bool:
-    try:
-        _validate_path_under_root(path, root)
-    except ValueError:
-        return False
-    return True
-
-
-def _validate_path_under_root(path: str | Path, root: Path) -> Path:
-    resolved_path = _resolve_path(Path(path))
-    resolved_root = _resolve_path(root)
-    try:
-        resolved_path.relative_to(resolved_root)
-    except ValueError as error:
-        raise ValueError(f"Path is outside configured root: {path}") from error
-    return resolved_path
-
-
-def _resolve_path(path: Path) -> Path:
-    return path.expanduser().resolve(strict=False)
-
-
-def _validate_file_cleanup_targets(paths: list[Path]) -> None:
-    for path in paths:
-        if path.exists() and not path.is_file():
-            raise ValueError(f"Deletion target is not a file: {path}")
-
-
-def _delete_file_if_present(path: Path) -> bool:
-    if not path.exists():
-        return False
-    path.unlink()
-    return True
-
-
-def _delete_unique_files(paths: list[Path]) -> list[str]:
-    deleted: list[str] = []
-    seen: set[Path] = set()
-    for path in paths:
-        if path in seen:
-            continue
-        seen.add(path)
-        if _delete_file_if_present(path):
-            deleted.append(str(path))
-    return deleted
+    unhealthy = {resolve_path(root.root_path) for root in unhealthy_roots}
+    return tuple(root for root in roots if resolve_path(root) not in unhealthy)
 
 
 def _validate_requested_path(source_path: Path, parser_registry: ParserRegistry) -> Path:
