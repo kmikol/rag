@@ -7,7 +7,9 @@ The `ingestion-worker` owns background document processing.
 The worker claims ingestion jobs, scans configured watch roots, reconciles the index against the filesystem source of truth, parses supported files, chunks text, calls `embedding-service`, and writes metadata/vectors/document copies.
 
 The current implementation exposes the health endpoint plus a one-shot worker
-pipeline for processing pending PostgreSQL ingestion jobs.
+pipeline for processing pending PostgreSQL ingestion jobs. Scheduled operation is
+handled by external automation, such as cron or systemd timers, creating full-scan
+jobs and invoking the one-shot worker.
 
 ## Responsibilities
 
@@ -25,9 +27,13 @@ pipeline for processing pending PostgreSQL ingestion jobs.
 - Preserve citation metadata on chunks: source path, filename, Markdown heading path, PDF page number, section title, and character offsets where available.
 - Claim pending ingestion jobs with PostgreSQL row locking.
 - Process full-scan and single-path ingestion jobs once per worker invocation.
+- Reconcile missing source files during full-scan jobs after watch-root health
+  checks.
 - Call `embedding-service` for batch document embeddings.
 - Persist documents, versions, chunks, job state, and embedding metadata in PostgreSQL.
 - Upsert chunk vectors into Qdrant after chunk metadata is persisted.
+- Delete Qdrant vectors, managed document-store copies, and metadata for active
+  documents whose source files are missing under healthy watch roots.
 - Skip duplicate raw-byte content hashes without creating another document version.
 
 ## API Contract
@@ -63,6 +69,21 @@ loop or scheduler. Pass `--fail-on-error` when automation should receive a
 non-zero exit code for a claimed job that ends in `failed`; an idle run with no
 pending job still exits successfully.
 
+For scheduled reconciliation, run external automation that creates a full-scan
+job through `api-service` and then invokes the one-shot worker. For example, a
+nightly cron or systemd timer can call:
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${RAG_API_KEY}" \
+  "${RAG_API_URL}/ingest"
+python -m ingestion_worker.worker --fail-on-error
+```
+
+The worker intentionally remains one-shot so deployment owners can choose cron,
+systemd timers, Docker scheduling, or another external scheduler without adding
+an in-process scheduler dependency.
+
 Job status progresses through the persisted ADR-005 lifecycle states. A document
 version is marked active only after Qdrant upsert succeeds. Hard failures mark
 the job failed with an error message and mark any in-progress document/version
@@ -82,8 +103,10 @@ failed for inspection.
 
 Scans skip dot-prefixed files and directories by default. Symlinks are followed,
 and resolved directories/files are tracked so cycles and duplicate discoveries do
-not repeat work. Unhealthy roots are reported in the scan result; deletion
-reconciliation is intentionally out of scope for this module slice.
+not repeat work. Unhealthy roots are reported in the scan result. Full-scan jobs
+continue processing healthy roots while skipping deletion reconciliation for
+documents under unhealthy roots. Single-path jobs do not run deletion
+reconciliation.
 
 Managed-copy hashes must be 64-character SHA-256 hex digests. Hash values are
 normalized to lowercase before path construction, existing managed copies are

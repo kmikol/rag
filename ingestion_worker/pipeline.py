@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from sqlalchemy.engine import Engine
 
 from ingestion_worker.chunking import DocumentChunk, StructureAwareChunker
 from ingestion_worker.filesystem import (
+    UnhealthyWatchRoot,
     compute_sha256,
     copy_to_managed_store,
     parse_watch_roots,
@@ -21,6 +23,8 @@ from ingestion_worker.parsing import ParserRegistry, default_parser_registry
 from shared.config import AppSettings, get_settings
 from shared.repository import ChunkRecord, MetadataRepository, create_metadata_engine
 from shared.vector_index import ChunkVector, QdrantVectorIndex
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionPipelineError(RuntimeError):
@@ -94,6 +98,9 @@ class VectorIndex(Protocol):
 
     def upsert_chunks(self, chunks: list[ChunkVector]) -> None:
         """Persist chunk vectors to the vector index."""
+
+    def delete_by_document_id(self, document_id: str) -> None:
+        """Remove all vectors belonging to one logical document."""
 
 
 class HttpEmbeddingClient:
@@ -256,7 +263,60 @@ def _process_claimed_job(
     parser_registry: ParserRegistry,
     chunker: StructureAwareChunker,
 ) -> int:
-    source_paths = _resolve_job_source_paths(job, settings, parser_registry)
+    requested_path = job.get("requested_path")
+    if requested_path:
+        source_paths = [
+            _validate_requested_path(Path(str(requested_path)).expanduser(), parser_registry)
+        ]
+        return _process_source_paths(
+            repository=repository,
+            job=job,
+            source_paths=source_paths,
+            settings=settings,
+            context=context,
+            parser_registry=parser_registry,
+            chunker=chunker,
+        )
+
+    watch_roots = parse_watch_roots(settings.watch_roots)
+    scan_result = scan_watch_roots(watch_roots, parser_registry)
+    for unhealthy_root in scan_result.unhealthy_roots:
+        logger.warning(
+            "Skipping deletion reconciliation for unhealthy watch root %s: %s",
+            unhealthy_root.root_path,
+            unhealthy_root.reason,
+        )
+    processed_items = _reconcile_missing_source_files(
+        repository=repository,
+        settings=settings,
+        vector_index=context.vector_index,
+        healthy_roots=_healthy_roots(watch_roots, scan_result.unhealthy_roots),
+    )
+    if processed_items:
+        repository.update_ingestion_job(str(job["id"]), "running", processed_items)
+
+    return processed_items + _process_source_paths(
+        repository=repository,
+        job=job,
+        source_paths=[discovered.source_path for discovered in scan_result.files],
+        settings=settings,
+        context=context,
+        parser_registry=parser_registry,
+        chunker=chunker,
+        initial_processed_items=processed_items,
+    )
+
+
+def _process_source_paths(
+    repository: MetadataRepository,
+    job: dict[str, object],
+    source_paths: list[Path],
+    settings: AppSettings,
+    context: IngestionJobContext,
+    parser_registry: ParserRegistry,
+    chunker: StructureAwareChunker,
+    initial_processed_items: int = 0,
+) -> int:
     processed_items = 0
     for source_path in source_paths:
         _process_source_path(
@@ -269,26 +329,112 @@ def _process_claimed_job(
             chunker=chunker,
         )
         processed_items += 1
-        repository.update_ingestion_job(str(job["id"]), "running", processed_items)
+        repository.update_ingestion_job(
+            str(job["id"]),
+            "running",
+            initial_processed_items + processed_items,
+        )
     return processed_items
 
 
-def _resolve_job_source_paths(
-    job: dict[str, object],
+def _reconcile_missing_source_files(
+    repository: MetadataRepository,
     settings: AppSettings,
-    parser_registry: ParserRegistry,
-) -> list[Path]:
-    requested_path = job.get("requested_path")
-    if requested_path:
-        return [_validate_requested_path(Path(str(requested_path)).expanduser(), parser_registry)]
+    vector_index: VectorIndex,
+    healthy_roots: tuple[Path, ...],
+) -> int:
+    if not healthy_roots:
+        return 0
 
-    scan_result = scan_watch_roots(parse_watch_roots(settings.watch_roots), parser_registry)
-    if scan_result.unhealthy_roots:
-        unhealthy = scan_result.unhealthy_roots[0]
-        raise IngestionPipelineError(
-            f"Unhealthy watch root {unhealthy.root_path}: {unhealthy.reason}"
-        )
-    return [discovered.source_path for discovered in scan_result.files]
+    reconciled = 0
+    document_store_root = Path(settings.document_store_path).expanduser()
+    for row in repository.list_documents():
+        document = row["document"]
+        active_version = row["active_version"]
+        if active_version is None or document["state"] != "active":
+            continue
+
+        source_path = Path(str(document["source_path"])).expanduser()
+        if not _is_path_under_roots(source_path, healthy_roots):
+            continue
+        if source_path.exists():
+            continue
+
+        deletion_target = repository.get_document_deletion_target(str(document["id"]))
+        if deletion_target is None:
+            continue
+
+        managed_files = [
+            _validate_path_under_root(path, document_store_root)
+            for path in deletion_target["managed_store_paths"]
+        ]
+        _validate_file_cleanup_targets(managed_files)
+
+        vector_index.delete_by_document_id(str(document["id"]))
+        _delete_unique_files(managed_files)
+        repository.delete_document(str(document["id"]))
+        reconciled += 1
+
+    return reconciled
+
+
+def _healthy_roots(
+    roots: tuple[Path, ...],
+    unhealthy_roots: tuple[UnhealthyWatchRoot, ...],
+) -> tuple[Path, ...]:
+    unhealthy = {_resolve_path(root.root_path) for root in unhealthy_roots}
+    return tuple(root for root in roots if _resolve_path(root) not in unhealthy)
+
+
+def _is_path_under_roots(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(_is_path_under_root(path, root) for root in roots)
+
+
+def _is_path_under_root(path: Path, root: Path) -> bool:
+    try:
+        _validate_path_under_root(path, root)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_path_under_root(path: str | Path, root: Path) -> Path:
+    resolved_path = _resolve_path(Path(path))
+    resolved_root = _resolve_path(root)
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as error:
+        raise ValueError(f"Path is outside configured root: {path}") from error
+    return resolved_path
+
+
+def _resolve_path(path: Path) -> Path:
+    return path.expanduser().resolve(strict=False)
+
+
+def _validate_file_cleanup_targets(paths: list[Path]) -> None:
+    for path in paths:
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Deletion target is not a file: {path}")
+
+
+def _delete_file_if_present(path: Path) -> bool:
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
+
+
+def _delete_unique_files(paths: list[Path]) -> list[str]:
+    deleted: list[str] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        if _delete_file_if_present(path):
+            deleted.append(str(path))
+    return deleted
 
 
 def _validate_requested_path(source_path: Path, parser_registry: ParserRegistry) -> Path:
