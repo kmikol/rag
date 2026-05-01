@@ -32,6 +32,13 @@ from api_service.retrieval import (
     VectorIndex,
 )
 from shared.config import get_settings, parse_path_list
+from shared.file_cleanup import (
+    delete_file_if_present,
+    delete_unique_files,
+    validate_file_cleanup_targets,
+    validate_path_under_root,
+    validate_path_under_roots,
+)
 from shared.logging_config import configure_logging
 from shared.repository import MetadataRepository, create_metadata_engine
 from shared.schemas import (
@@ -198,12 +205,12 @@ def delete_document(
     document = deletion_target["document"]
     source_path = str(document["source_path"])
     try:
-        source_file = _validate_path_under_roots(source_path, parse_path_list(settings.watch_roots))
+        source_file = validate_path_under_roots(source_path, parse_path_list(settings.watch_roots))
         managed_files = [
-            _validate_path_under_root(path, Path(settings.document_store_path).expanduser())
+            validate_path_under_root(path, Path(settings.document_store_path).expanduser())
             for path in deletion_target["managed_store_paths"]
         ]
-        _validate_file_cleanup_targets([source_file, *managed_files])
+        validate_file_cleanup_targets([source_file, *managed_files])
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -220,8 +227,8 @@ def delete_document(
         ) from error
 
     try:
-        source_file_deleted = _delete_file_if_present(source_file)
-        managed_store_paths_deleted = _delete_unique_files(managed_files)
+        source_file_deleted = delete_file_if_present(source_file)
+        managed_store_paths_deleted = delete_unique_files(managed_files)
     except ValueError as error:
         logger.exception("Document deletion validation failed during local cleanup.")
         raise HTTPException(
@@ -247,52 +254,6 @@ def delete_document(
         source_file_deleted=source_file_deleted,
         managed_store_paths_deleted=managed_store_paths_deleted,
     )
-
-
-def _validate_path_under_roots(path: str, roots: tuple[Path, ...]) -> Path:
-    if not roots:
-        raise ValueError("WATCH_ROOTS must contain at least one path for document deletion.")
-    for root in roots:
-        try:
-            return _validate_path_under_root(path, root)
-        except ValueError:
-            continue
-    raise ValueError(f"Path is outside configured watch roots: {path}")
-
-
-def _validate_path_under_root(path: str | Path, root: Path) -> Path:
-    resolved_path = Path(path).expanduser().resolve(strict=False)
-    resolved_root = root.expanduser().resolve(strict=False)
-    try:
-        resolved_path.relative_to(resolved_root)
-    except ValueError as error:
-        raise ValueError(f"Path is outside configured root: {path}") from error
-    return resolved_path
-
-
-def _delete_file_if_present(path: Path) -> bool:
-    if not path.exists():
-        return False
-    path.unlink()
-    return True
-
-
-def _validate_file_cleanup_targets(paths: list[Path]) -> None:
-    for path in paths:
-        if path.exists() and not path.is_file():
-            raise ValueError(f"Deletion target is not a file: {path}")
-
-
-def _delete_unique_files(paths: list[Path]) -> list[str]:
-    deleted: list[str] = []
-    seen: set[Path] = set()
-    for path in paths:
-        if path in seen:
-            continue
-        seen.add(path)
-        if _delete_file_if_present(path):
-            deleted.append(str(path))
-    return deleted
 
 
 @app.post(

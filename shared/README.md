@@ -12,6 +12,7 @@ the Python table definitions and repository helpers used by the services.
 ## Responsibilities
 
 - Environment configuration.
+- Shared path-validation and local file-cleanup helpers for deletion flows.
 - Logging setup.
 - Shared API response schemas.
 - SQLAlchemy metadata table definitions for PostgreSQL.

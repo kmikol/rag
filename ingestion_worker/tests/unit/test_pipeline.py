@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ from ingestion_worker.pipeline import (
 )
 from shared.config import AppSettings
 from shared.db import chunks, metadata
-from shared.repository import MetadataRepository
+from shared.repository import ChunkRecord, MetadataRepository
 from shared.vector_index import ChunkVector
 
 
@@ -41,6 +42,7 @@ class FakeVectorIndex:
         self.dimension: int | None = None
         self.ensure_calls: list[int] = []
         self.vectors: list[ChunkVector] = []
+        self.deleted_document_ids: list[str] = []
 
     def ensure_collection(self, dimension: int) -> None:
         self.dimension = dimension
@@ -48,6 +50,9 @@ class FakeVectorIndex:
 
     def upsert_chunks(self, chunks: list[ChunkVector]) -> None:
         self.vectors.extend(chunks)
+
+    def delete_by_document_id(self, document_id: str) -> None:
+        self.deleted_document_ids.append(document_id)
 
 
 class RaisingParser(BaseDocumentParser):
@@ -72,6 +77,31 @@ def make_engine():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     metadata.create_all(engine)
     return engine
+
+
+def create_active_document(
+    repository: MetadataRepository,
+    source_path: Path,
+    managed_path: Path,
+    content_hash: str,
+) -> dict[str, object]:
+    managed_path.parent.mkdir(parents=True, exist_ok=True)
+    managed_path.write_text("managed content", encoding="utf-8")
+    document = repository.get_or_create_document(str(source_path))
+    version = repository.create_document_version(document["id"], content_hash, str(managed_path))
+    repository.create_chunks(
+        document["id"],
+        version["id"],
+        [
+            ChunkRecord(
+                text="Chunk text",
+                source_path=str(source_path),
+                original_filename=source_path.name,
+            )
+        ],
+    )
+    repository.mark_document_version_active(version["id"])
+    return document
 
 
 def test_process_next_job_returns_false_when_no_job(tmp_path: Path) -> None:
@@ -198,6 +228,172 @@ def test_process_next_job_full_scan_caches_model_info_and_collection_setup(
     assert embedding_client.embedded_texts == ["Alpha content.", "Beta content."]
     assert vector_index.ensure_calls == [3]
     assert len(vector_index.vectors) == 2
+
+
+def test_full_scan_reconciles_missing_source_file_under_healthy_root(tmp_path: Path) -> None:
+    engine = make_engine()
+    watch_root = tmp_path / "watch"
+    watch_root.mkdir()
+    document_store = tmp_path / "documents"
+    source_path = watch_root / "missing.md"
+    managed_path = document_store / "aa" / "managed.md"
+    vector_index = FakeVectorIndex()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = create_active_document(repository, source_path, managed_path, "a" * 64)
+        job = repository.create_ingestion_job()
+
+    process_next_job(
+        worker_id="unit-worker",
+        settings=make_settings(tmp_path),
+        engine=engine,
+        embedding_client=FakeEmbeddingClient(),
+        vector_index=vector_index,
+    )
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        updated_job = repository.get_ingestion_job(job["id"])
+        documents = repository.list_documents()
+        persisted_chunks = connection.execute(select(chunks)).mappings().all()
+
+    assert updated_job["status"] == "active"
+    assert updated_job["processed_items"] == 1
+    assert documents == []
+    assert persisted_chunks == []
+    assert not managed_path.exists()
+    assert vector_index.deleted_document_ids == [document["id"]]
+
+
+def test_full_scan_skips_deletion_reconciliation_for_unhealthy_root(tmp_path: Path) -> None:
+    engine = make_engine()
+    missing_root = tmp_path / "missing-root"
+    document_store = tmp_path / "documents"
+    source_path = missing_root / "missing.md"
+    managed_path = document_store / "aa" / "managed.md"
+    settings = make_settings(tmp_path)
+    settings.watch_roots = str(missing_root)
+    vector_index = FakeVectorIndex()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        document = create_active_document(repository, source_path, managed_path, "a" * 64)
+        job = repository.create_ingestion_job()
+
+    process_next_job(
+        worker_id="unit-worker",
+        settings=settings,
+        engine=engine,
+        embedding_client=FakeEmbeddingClient(),
+        vector_index=vector_index,
+    )
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        updated_job = repository.get_ingestion_job(job["id"])
+        documents = repository.list_documents()
+
+    assert updated_job["status"] == "active"
+    assert updated_job["processed_items"] == 0
+    assert documents[0]["document"]["id"] == document["id"]
+    assert managed_path.exists()
+    assert vector_index.deleted_document_ids == []
+
+
+def test_full_scan_processes_healthy_root_when_another_root_is_unhealthy(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine()
+    healthy_root = tmp_path / "healthy"
+    healthy_root.mkdir()
+    new_source = healthy_root / "new.md"
+    new_source.write_text("# New\n\nHealthy content.", encoding="utf-8")
+    missing_root = tmp_path / "missing-root"
+    document_store = tmp_path / "documents"
+    missing_source = missing_root / "missing.md"
+    managed_path = document_store / "aa" / "managed.md"
+    settings = make_settings(tmp_path)
+    settings.watch_roots = os.pathsep.join((str(healthy_root), str(missing_root)))
+    embedding_client = FakeEmbeddingClient()
+    vector_index = FakeVectorIndex()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        skipped_document = create_active_document(
+            repository,
+            missing_source,
+            managed_path,
+            "a" * 64,
+        )
+        job = repository.create_ingestion_job()
+
+    process_next_job(
+        worker_id="unit-worker",
+        settings=settings,
+        engine=engine,
+        embedding_client=embedding_client,
+        vector_index=vector_index,
+    )
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        updated_job = repository.get_ingestion_job(job["id"])
+        documents = repository.list_documents()
+
+    assert updated_job["status"] == "active"
+    assert updated_job["processed_items"] == 1
+    assert {row["document"]["source_path"] for row in documents} == {
+        str(missing_source),
+        str(new_source),
+    }
+    assert documents[0]["document"]["id"] == skipped_document["id"]
+    assert managed_path.exists()
+    assert embedding_client.embedded_texts == ["Healthy content."]
+    assert vector_index.deleted_document_ids == []
+    assert len(vector_index.vectors) == 1
+
+
+def test_single_path_job_does_not_run_deletion_reconciliation(tmp_path: Path) -> None:
+    engine = make_engine()
+    watch_root = tmp_path / "watch"
+    watch_root.mkdir()
+    requested_source = watch_root / "requested.md"
+    requested_source.write_text("# Requested\n\nRequested content.", encoding="utf-8")
+    missing_source = watch_root / "missing.md"
+    document_store = tmp_path / "documents"
+    managed_path = document_store / "aa" / "managed.md"
+    vector_index = FakeVectorIndex()
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        missing_document = create_active_document(
+            repository,
+            missing_source,
+            managed_path,
+            "a" * 64,
+        )
+        job = repository.create_ingestion_job(str(requested_source))
+
+    process_next_job(
+        worker_id="unit-worker",
+        settings=make_settings(tmp_path),
+        engine=engine,
+        embedding_client=FakeEmbeddingClient(),
+        vector_index=vector_index,
+    )
+
+    with engine.begin() as connection:
+        repository = MetadataRepository(connection)
+        updated_job = repository.get_ingestion_job(job["id"])
+        documents = repository.list_documents()
+
+    assert updated_job["status"] == "active"
+    assert updated_job["processed_items"] == 1
+    assert str(missing_source) in {row["document"]["source_path"] for row in documents}
+    assert managed_path.exists()
+    assert vector_index.deleted_document_ids == []
+    assert missing_document["id"] in {row["document"]["id"] for row in documents}
 
 
 def test_process_next_job_skips_duplicate_content_hash(tmp_path: Path) -> None:
