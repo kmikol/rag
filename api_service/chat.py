@@ -12,7 +12,9 @@ from urllib import error, request
 from shared.schemas import SearchResult
 
 logger = logging.getLogger(__name__)
+# Retry only transient upstream throttling / availability failures from Google.
 _RETRYABLE_GOOGLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+# Four attempts gives the provider 1s, 2s, and 4s recovery windows before failing.
 _GOOGLE_GENERATION_MAX_ATTEMPTS = 4
 
 
@@ -365,14 +367,18 @@ def _should_retry_google_http_error(exc: error.HTTPError, attempt: int) -> bool:
     return attempt < _GOOGLE_GENERATION_MAX_ATTEMPTS and exc.code in _RETRYABLE_GOOGLE_STATUS_CODES
 
 
-def _retry_wait_seconds(attempt: int, headers: Message[str, str] | None = None) -> float:
+def _retry_wait_seconds(
+    attempt: int,
+    response_headers: Message[str, str] | None = None,
+) -> float:
     """Return Retry-After delay-seconds, else fallback to 1s, 2s, 4s... backoff."""
-    retry_after = headers.get("Retry-After") if headers is not None else None
+    retry_after = response_headers.get("Retry-After") if response_headers is not None else None
     if isinstance(retry_after, str):
         try:
             return max(float(retry_after), 0.0)
         except ValueError:
             pass
+    # attempt=1 -> 1s, attempt=2 -> 2s, attempt=3 -> 4s, ...
     return float(2 ** (attempt - 1))
 
 
