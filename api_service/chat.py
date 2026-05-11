@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from email.message import Message
 from typing import Protocol
 from urllib import error, request
 
@@ -241,8 +242,7 @@ class GoogleGenerateContentLLMClient:
                 )
                 time.sleep(wait_seconds)
 
-        assert last_error is not None
-        raise last_error
+        raise GenerationError("Google generateContent retry loop completed without an error.")
 
     def stream_complete(
         self,
@@ -363,9 +363,9 @@ def _should_retry_google_http_error(exc: error.HTTPError, attempt: int) -> bool:
     return attempt < _GOOGLE_GENERATION_MAX_ATTEMPTS and exc.code in _RETRYABLE_GOOGLE_STATUS_CODES
 
 
-def _retry_wait_seconds(attempt: int, headers: object | None = None) -> float:
+def _retry_wait_seconds(attempt: int, headers: Message[str, str] | None = None) -> float:
     """Return Retry-After seconds when provided, else exponential backoff from attempt 1."""
-    retry_after = headers.get("Retry-After") if hasattr(headers, "get") else None
+    retry_after = headers.get("Retry-After") if headers is not None else None
     if isinstance(retry_after, str):
         try:
             return max(float(retry_after), 0.0)
