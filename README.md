@@ -61,9 +61,9 @@ Deployable services are published to GitHub Container Registry (GHCR):
 - `ghcr.io/<owner>/rag-ingestion-worker`
 - `ghcr.io/<owner>/rag-embedding-service`
 
-Image tags are immutable and intended for deployments:
+Image tags are intended for deployments, but tags can be moved if republished; pin by digest when you need an immutable reference:
 
-- `sha-<full_commit_sha>` for every published build.
+- `sha-<full_commit_sha>` for every published build, for traceability to a specific source commit.
 - Manually selected release version tags (for example: `0.0.1`) via Git tag (`v0.0.1`) or manual workflow dispatch input.
 
 Avoid using `latest` for cluster deployments.
