@@ -369,7 +369,7 @@ def _should_retry_google_http_error(exc: error.HTTPError, attempt: int) -> bool:
 
 def _retry_wait_seconds(
     attempt: int,
-    response_headers: Message[str, str] | None = None,
+    response_headers: Message | None = None,
 ) -> float:
     """Return Retry-After delay-seconds, else fallback to 1s, 2s, 4s... backoff."""
     retry_after = response_headers.get("Retry-After") if response_headers is not None else None
