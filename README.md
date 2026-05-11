@@ -52,3 +52,18 @@ Do not put personal secrets in the committed env defaults; override values in yo
 - Dedicated `embedding-service`, co-located with Ollama/Gemma on the Mac M2 model host by default.
 - Hybrid dense + sparse retrieval.
 - Immutable document versions and explicit ingestion state.
+
+## Container Images
+
+Deployable services are published to GitHub Container Registry (GHCR):
+
+- `ghcr.io/<owner>/rag-api-service`
+- `ghcr.io/<owner>/rag-ingestion-worker`
+- `ghcr.io/<owner>/rag-embedding-service`
+
+Image tags are immutable and intended for deployments:
+
+- `sha-<full_commit_sha>` for every published build.
+- `0.0.N` incremental version tags starting at `0.0.1`.
+
+Avoid using `latest` for cluster deployments.
