@@ -107,6 +107,10 @@ test.e2e: ## Run provider-backed end-to-end RAG tests in Docker
 	@test -n "$$GEMINI_API_KEY_E2E_TEST" || (echo "GEMINI_API_KEY_E2E_TEST is required for test.e2e"; exit 2)
 	$(E2E_COMPOSE) run --build --rm test; \
 	EXIT=$$?; \
+	if [ $$EXIT -ne 0 ]; then \
+		echo "E2E stack logs after failure:"; \
+		$(E2E_COMPOSE) logs --no-color api-service embedding-service ingestion-worker test || true; \
+	fi; \
 	$(E2E_COMPOSE) down -v; \
 	exit $$EXIT
 

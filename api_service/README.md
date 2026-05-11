@@ -48,8 +48,9 @@ completion request to the configured `LLM_CHAT_COMPLETIONS_URL` using
 `LLM_MODEL`. Local Ollama remains the default private deployment, while external
 OpenAI-compatible providers can be configured explicitly. The prompt uses only
 the top configured number of retrieved chunks and truncates chunk text in the
-prompt without changing stored citations. The response always uses the same
-shape:
+prompt without changing stored citations. Google-native generation retries
+transient upstream failures with bounded backoff before the API returns `502`.
+The response always uses the same shape:
 
 ```json
 {

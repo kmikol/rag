@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Protocol
 from urllib import error, request
 
 from shared.schemas import SearchResult
+
+logger = logging.getLogger(__name__)
+_RETRYABLE_GOOGLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_GOOGLE_GENERATION_MAX_ATTEMPTS = 4
 
 
 class GenerationError(RuntimeError):
@@ -192,22 +198,52 @@ class GoogleGenerateContentLLMClient:
         if self.api_key:
             headers["x-goog-api-key"] = self.api_key
 
-        req = request.Request(
-            url=f"{self.endpoint_url}/models/{self.model_name}:generateContent",
-            data=payload,
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = _read_json_response(response)
-        except error.HTTPError as exc:
-            detail = _read_http_error_detail(exc)
-            raise GenerationError(f"Google generateContent HTTP error: {detail}") from exc
-        except error.URLError as exc:
-            raise GenerationError(f"Google generateContent unavailable: {exc.reason}") from exc
+        last_error: GenerationError | None = None
+        for attempt in range(1, _GOOGLE_GENERATION_MAX_ATTEMPTS + 1):
+            req = request.Request(
+                url=f"{self.endpoint_url}/models/{self.model_name}:generateContent",
+                data=payload,
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                    body = _read_json_response(response)
+                return _parse_google_generate_content(body)
+            except error.HTTPError as exc:
+                detail = _read_http_error_detail(exc)
+                last_error = GenerationError(f"Google generateContent HTTP error: {detail}")
+                if not _should_retry_google_http_error(exc, attempt):
+                    raise last_error from exc
+                wait_seconds = _retry_wait_seconds(attempt, exc.headers)
+                logger.warning(
+                    "Google generateContent request failed with HTTP %s on attempt %s/%s; "
+                    "retrying in %.1fs. Detail: %s",
+                    exc.code,
+                    attempt,
+                    _GOOGLE_GENERATION_MAX_ATTEMPTS,
+                    wait_seconds,
+                    detail,
+                )
+                time.sleep(wait_seconds)
+            except error.URLError as exc:
+                last_error = GenerationError(f"Google generateContent unavailable: {exc.reason}")
+                if attempt >= _GOOGLE_GENERATION_MAX_ATTEMPTS:
+                    raise last_error from exc
+                wait_seconds = _retry_wait_seconds(attempt)
+                logger.warning(
+                    "Google generateContent request failed with network error on attempt %s/%s; "
+                    "retrying in %.1fs. Reason: %s",
+                    attempt,
+                    _GOOGLE_GENERATION_MAX_ATTEMPTS,
+                    wait_seconds,
+                    exc.reason,
+                )
+                time.sleep(wait_seconds)
 
-        return _parse_google_generate_content(body)
+        if last_error is None:
+            raise GenerationError("Google generateContent failed without a captured error.")
+        raise last_error
 
     def stream_complete(
         self,
@@ -324,6 +360,20 @@ def _read_http_error_detail(exc: error.HTTPError) -> str:
         return "<non-UTF-8 response body>"
 
 
+def _should_retry_google_http_error(exc: error.HTTPError, attempt: int) -> bool:
+    return attempt < _GOOGLE_GENERATION_MAX_ATTEMPTS and exc.code in _RETRYABLE_GOOGLE_STATUS_CODES
+
+
+def _retry_wait_seconds(attempt: int, headers: object | None = None) -> float:
+    retry_after = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if isinstance(retry_after, str):
+        try:
+            return max(float(retry_after), 0.0)
+        except ValueError:
+            pass
+    return float(2 ** (attempt - 1))
+
+
 def _build_google_generate_content_request(
     messages: list[dict[str, str]],
     options: GenerationOptions | None,
@@ -381,6 +431,13 @@ def _parse_chat_completion(body: dict[str, object]) -> str:
 def _parse_google_generate_content(body: dict[str, object]) -> str:
     candidates = body.get("candidates")
     if not isinstance(candidates, list) or not candidates:
+        prompt_feedback = body.get("promptFeedback")
+        if isinstance(prompt_feedback, dict):
+            block_reason = prompt_feedback.get("blockReason")
+            if isinstance(block_reason, str):
+                raise GenerationError(
+                    f"Google generateContent blocked request: blockReason={block_reason}."
+                )
         raise GenerationError("Google generateContent response missing candidates.")
 
     first_candidate = candidates[0]
@@ -402,5 +459,10 @@ def _parse_google_generate_content(body: dict[str, object]) -> str:
     ]
     answer = "".join(text_parts).strip()
     if not answer:
+        finish_reason = first_candidate.get("finishReason")
+        if isinstance(finish_reason, str):
+            raise GenerationError(
+                f"Google generateContent response missing text (finishReason={finish_reason})."
+            )
         raise GenerationError("Google generateContent response missing text.")
     return answer

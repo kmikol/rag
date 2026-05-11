@@ -193,6 +193,59 @@ def test_google_generate_content_client_rejects_missing_text(
         ).complete([{"role": "user", "content": "hello"}])
 
 
+def test_google_generate_content_client_retries_transient_http_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt_count = 0
+    sleep_calls: list[float] = []
+
+    def fake_urlopen(*args: object, **kwargs: object) -> FakeResponse:
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count < 3:
+            raise error.HTTPError(
+                url="https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent",
+                code=503,
+                msg="Service Unavailable",
+                hdrs=Message(),
+                fp=BytesIO(b'{"error":{"message":"backend overloaded"}}'),
+            )
+        return FakeResponse(
+            b'{"candidates":[{"content":{"parts":[{"text":"Grounded answer [1]."}]}}]}'
+        )
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(chat.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+
+    answer = GoogleGenerateContentLLMClient(
+        "https://generativelanguage.googleapis.com/v1beta",
+        "gemma-4-31b-it",
+        180,
+        "secret-token",
+    ).complete([{"role": "user", "content": "hello"}])
+
+    assert answer == "Grounded answer [1]."
+    assert attempt_count == 3
+    assert sleep_calls == [1.0, 2.0]
+
+
+def test_google_generate_content_client_reports_block_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(*args: object, **kwargs: object) -> FakeResponse:
+        return FakeResponse(b'{"promptFeedback":{"blockReason":"SAFETY"}}')
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(GenerationError, match="blockReason=SAFETY"):
+        GoogleGenerateContentLLMClient(
+            "https://generativelanguage.googleapis.com/v1beta",
+            "gemma-4-31b-it",
+            180,
+            "secret-token",
+        ).complete([{"role": "user", "content": "hello"}])
+
+
 class FakeStreamingResponse:
     def __init__(self, lines: list[bytes]) -> None:
         self.lines = lines

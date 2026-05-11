@@ -327,8 +327,13 @@ def chat(
                 for token in chat_client.stream_complete(messages, options):
                     answer_parts.append(token)
                     yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
-            except GenerationError:
-                logger.exception("Chat stream generation failed.")
+            except GenerationError as error:
+                logger.exception(
+                    "Chat stream generation failed for provider=%s model=%s: %s",
+                    settings.llm_provider,
+                    settings.llm_model,
+                    error,
+                )
                 yield (
                     f"data: "
                     f"{json.dumps({'type': 'error', 'detail': CHAT_GENERATION_ERROR_DETAIL})}"
@@ -350,7 +355,12 @@ def chat(
     try:
         answer = chat_client.complete(messages, options)
     except GenerationError as error:
-        logger.exception("Chat generation failed.")
+        logger.exception(
+            "Chat generation failed for provider=%s model=%s: %s",
+            settings.llm_provider,
+            settings.llm_model,
+            error,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=CHAT_GENERATION_ERROR_DETAIL,
