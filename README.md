@@ -64,6 +64,6 @@ Deployable services are published to GitHub Container Registry (GHCR):
 Image tags are immutable and intended for deployments:
 
 - `sha-<full_commit_sha>` for every published build.
-- `0.0.N` incremental version tags starting at `0.0.1`.
+- Manually selected release version tags (for example: `0.0.1`) via Git tag (`v0.0.1`) or manual workflow dispatch input.
 
 Avoid using `latest` for cluster deployments.
