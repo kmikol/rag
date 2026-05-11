@@ -241,8 +241,7 @@ class GoogleGenerateContentLLMClient:
                 )
                 time.sleep(wait_seconds)
 
-        if last_error is None:
-            raise GenerationError("Google generateContent failed without a captured error.")
+        assert last_error is not None
         raise last_error
 
     def stream_complete(
@@ -365,6 +364,7 @@ def _should_retry_google_http_error(exc: error.HTTPError, attempt: int) -> bool:
 
 
 def _retry_wait_seconds(attempt: int, headers: object | None = None) -> float:
+    """Return Retry-After seconds when provided, else exponential backoff from attempt 1."""
     retry_after = headers.get("Retry-After") if hasattr(headers, "get") else None
     if isinstance(retry_after, str):
         try:
