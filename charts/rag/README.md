@@ -17,3 +17,47 @@ Deploys RAG API service, ingestion worker, embedding service, and Qdrant.
 
 - `examples/values.example.yaml` for portable settings.
 - `examples/values.cluster-home-arpa.example.yaml` for a homelab route example.
+
+## OCI Chart Publishing
+
+The chart is published to GitHub Container Registry by the `Publish Helm Chart`
+workflow when a GitHub release is published. It can also be published manually
+from the workflow dispatch form with an explicit semantic version.
+
+Chart reference:
+
+```text
+oci://ghcr.io/kmikol/charts/rag
+```
+
+The workflow strips a leading `v` from release tags, so release tag `v0.1.0`
+publishes chart version `0.1.0`. It packages the chart with both `version` and
+`appVersion` set to the same semantic version, then refuses to push if that
+chart version already exists in GHCR. Cluster repositories should pin the chart
+by version instead of tracking an unversioned reference.
+
+Pull the packaged chart:
+
+```bash
+helm pull oci://ghcr.io/kmikol/charts/rag --version 0.1.0
+```
+
+Install directly from GHCR:
+
+```bash
+helm install rag oci://ghcr.io/kmikol/charts/rag \
+  --version 0.1.0 \
+  -f values.yaml
+```
+
+For Argo CD, use the repository and chart name separately:
+
+```yaml
+repoURL: oci://ghcr.io/kmikol/charts
+chart: rag
+targetRevision: 0.1.0
+```
+
+If the cluster must pull the chart without GHCR credentials, make the
+`ghcr.io/kmikol/charts/rag` package public after the first publish. Private
+cluster pulls should use a GHCR token with package read access.

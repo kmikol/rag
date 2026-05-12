@@ -1,0 +1,76 @@
+name: Publish Helm Chart
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic chart/app version to publish, for example 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHART_NAME: rag
+  CHART_PATH: charts/rag
+  OCI_REPOSITORY: ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Resolve chart version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            raw_version="${{ github.event.release.tag_name }}"
+          else
+            raw_version="${{ inputs.version }}"
+          fi
+
+          chart_version="${raw_version#v}"
+          if [[ ! "$chart_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Chart version must be SemVer, with an optional leading v in the release tag."
+            exit 1
+          fi
+
+          echo "chart-version=$chart_version" >> "$GITHUB_OUTPUT"
+
+      - name: Lint chart
+        run: helm lint "$CHART_PATH"
+
+      - name: Package chart
+        run: |
+          mkdir -p dist
+          helm package "$CHART_PATH" \
+            --version "${{ steps.version.outputs.chart-version }}" \
+            --app-version "${{ steps.version.outputs.chart-version }}" \
+            --destination dist
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Refuse to overwrite existing chart version
+        run: |
+          if helm show chart "oci://$OCI_REPOSITORY/$CHART_NAME" \
+            --version "${{ steps.version.outputs.chart-version }}" >/dev/null 2>&1; then
+            echo "::error::Chart version ${{ steps.version.outputs.chart-version }} already exists in oci://$OCI_REPOSITORY/$CHART_NAME."
+            exit 1
+          fi
+
+      - name: Push chart to GHCR
+        run: helm push "dist/$CHART_NAME-${{ steps.version.outputs.chart-version }}.tgz" "oci://$OCI_REPOSITORY"
