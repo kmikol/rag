@@ -1,0 +1,31 @@
+existingSecret: rag-db-credentials
+
+database:
+  host: postgresql.database.svc.cluster.local
+  port: 5432
+  name: rag
+
+apiService:
+  ingress:
+    enabled: true
+    hosts:
+      - host: rag.local
+        paths:
+          - path: /rag
+            pathType: Prefix
+
+ingestionWorker:
+  env:
+    WATCH_ROOTS: /data/watch
+
+embeddingService:
+  env:
+    EMBEDDING_BACKEND: ollama
+    EMBEDDING_MODEL_NAME: embeddinggemma
+    EMBEDDING_DIMENSION: "768"
+    EMBEDDING_ENDPOINT_URL: http://ollama.default.svc.cluster.local:11434
+
+qdrant:
+  persistence:
+    enabled: true
+    storageClassName: standard

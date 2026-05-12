@@ -1,0 +1,30 @@
+existingSecret: rag-db-credentials
+
+database:
+  host: postgresql.database.svc.cluster.local
+  port: 5432
+  name: rag
+
+apiService:
+  ingress:
+    enabled: true
+    className: traefik
+    hosts:
+      - host: cluster.home.arpa
+        paths:
+          - path: /rag
+            pathType: Prefix
+      - host: cluster.example.ts.net
+        paths:
+          - path: /rag
+            pathType: Prefix
+
+ingestionWorker:
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+
+qdrant:
+  persistence:
+    enabled: true
+    storageClassName: longhorn

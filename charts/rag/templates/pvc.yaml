@@ -1,0 +1,47 @@
+{{- if .Values.apiService.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag.fullname" . }}-api-data
+spec:
+  accessModes:
+    {{- toYaml .Values.apiService.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.apiService.persistence.size }}
+  {{- with .Values.apiService.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+---
+{{- end }}
+{{- if .Values.ingestionWorker.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag.fullname" . }}-ingestion-worker-data
+spec:
+  accessModes:
+    {{- toYaml .Values.ingestionWorker.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.ingestionWorker.persistence.size }}
+  {{- with .Values.ingestionWorker.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+---
+{{- end }}
+{{- if .Values.qdrant.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag.fullname" . }}-qdrant-data
+spec:
+  accessModes:
+    {{- toYaml .Values.qdrant.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.qdrant.persistence.size }}
+  {{- with .Values.qdrant.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag.fullname" . }}-ingestion-worker
+  labels:
+    {{- include "rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingestion-worker
+spec:
+  replicas: {{ .Values.ingestionWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ingestion-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: ingestion-worker
+    spec:
+      serviceAccountName: {{ include "rag.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ingestion-worker
+          image: "{{ .Values.ingestionWorker.image.repository }}:{{ default .Chart.AppVersion .Values.ingestionWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.ingestionWorker.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.ingestionWorker.containerPort }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: {{ .Values.database.userSecretKey }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: {{ .Values.database.passwordSecretKey }}
+            - name: POSTGRES_URL
+              value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ required "database.host is required" .Values.database.host }}:{{ .Values.database.port }}/{{ required "database.name is required" .Values.database.name }}"
+            - name: QDRANT_URL
+              value: "http://{{ include "rag.fullname" . }}-qdrant:{{ .Values.qdrant.service.port }}"
+            - name: EMBEDDING_SERVICE_URL
+              value: "http://{{ include "rag.fullname" . }}-embedding-service:{{ .Values.embeddingService.service.port }}"
+            {{- range $key, $value := .Values.ingestionWorker.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.ingestionWorker.resources | nindent 12 }}
+          {{- if .Values.ingestionWorker.persistence.enabled }}
+          volumeMounts:
+            - name: ingestion-worker-data
+              mountPath: {{ .Values.ingestionWorker.persistence.mountPath }}
+          {{- end }}
+      {{- if .Values.ingestionWorker.persistence.enabled }}
+      volumes:
+        - name: ingestion-worker-data
+          persistentVolumeClaim:
+            claimName: {{ include "rag.fullname" . }}-ingestion-worker-data
+      {{- end }}
