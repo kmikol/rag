@@ -69,6 +69,9 @@ nav:
     - C4 Level 2: architecture/c4-level-2.md
   - Getting Started:
     - Setup: getting-started/setup.md
+    - Deploy and Use: getting-started/deployment-guide.md
+    - Internet Hardening: getting-started/internet-hardening.md
+    - Tailscale Postgres on Synology: getting-started/tailscale-postgres-synology.md
     - Running: getting-started/running.md
     - Useful Commands: getting-started/useful-commands.md
   - Schemas:

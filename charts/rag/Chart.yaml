@@ -1,0 +1,6 @@
+apiVersion: v2
+name: rag
+description: Helm chart for the RAG services (API, ingestion worker, embedding service, and Qdrant)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
