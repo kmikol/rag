@@ -6,6 +6,9 @@ database:
   name: rag
 
 apiService:
+  apiKey:
+    existingSecret: rag-api-credentials
+    secretKey: RAG_API_KEY
   ingress:
     enabled: true
     className: traefik
@@ -20,6 +23,9 @@ apiService:
             pathType: Prefix
 
 ingestionWorker:
+  cronJob:
+    enabled: true
+    schedule: "0 * * * *"
   persistence:
     enabled: true
     storageClassName: longhorn

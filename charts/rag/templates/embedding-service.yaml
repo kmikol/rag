@@ -18,21 +18,48 @@ spec:
         app.kubernetes.io/component: embedding-service
     spec:
       serviceAccountName: {{ include "rag.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: embedding-service
           image: "{{ .Values.embeddingService.image.repository }}:{{ default .Chart.AppVersion .Values.embeddingService.image.tag }}"
           imagePullPolicy: {{ .Values.embeddingService.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.embeddingService.containerPort }}
-          {{- with .Values.embeddingService.env }}
+          {{- if or .Values.embeddingService.env .Values.embeddingService.extraEnv }}
           env:
-            {{- range $key, $value := . }}
+            {{- range $key, $value := .Values.embeddingService.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- with .Values.embeddingService.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.embeddingService.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           resources:
             {{- toYaml .Values.embeddingService.resources | nindent 12 }}
+          {{- if .Values.embeddingService.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.embeddingService.readinessProbe.path }}
+              port: {{ .Values.embeddingService.containerPort }}
+            initialDelaySeconds: {{ .Values.embeddingService.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.embeddingService.readinessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.embeddingService.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.embeddingService.livenessProbe.path }}
+              port: {{ .Values.embeddingService.containerPort }}
+            initialDelaySeconds: {{ .Values.embeddingService.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.embeddingService.livenessProbe.periodSeconds }}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

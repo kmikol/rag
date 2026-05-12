@@ -9,6 +9,7 @@ serviceAccount:
 
 rbac:
   create: false
+  rules: []
 
 existingSecret: rag-db-credentials
 
@@ -28,6 +29,9 @@ apiService:
     annotations: {}
     hosts: []
     tls: []
+  apiKey:
+    existingSecret: ""
+    secretKey: RAG_API_KEY
   readinessProbe:
     enabled: true
     path: /health
@@ -40,6 +44,8 @@ apiService:
     periodSeconds: 20
   resources: {}
   env: {}
+  envFrom: []
+  extraEnv: []
   persistence:
     enabled: false
     size: 10Gi
@@ -55,8 +61,25 @@ ingestionWorker:
     tag: ""
     pullPolicy: IfNotPresent
   containerPort: 8000
+  command: []
+  args: []
   resources: {}
   env: {}
+  envFrom: []
+  extraEnv: []
+  cronJob:
+    enabled: false
+    schedule: "0 * * * *"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    backoffLimit: 1
+    restartPolicy: Never
+    command:
+      - python
+      - -m
+      - ingestion_worker.worker
+    args:
+      - --fail-on-error
   persistence:
     enabled: false
     size: 20Gi
@@ -77,6 +100,18 @@ embeddingService:
   containerPort: 8000
   resources: {}
   env: {}
+  envFrom: []
+  extraEnv: []
+  readinessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  livenessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 20
 
 qdrant:
   replicas: 1

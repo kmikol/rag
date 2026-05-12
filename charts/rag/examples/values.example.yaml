@@ -6,6 +6,9 @@ database:
   name: rag
 
 apiService:
+  apiKey:
+    existingSecret: rag-api-credentials
+    secretKey: RAG_API_KEY
   ingress:
     enabled: true
     hosts:
@@ -17,6 +20,9 @@ apiService:
 ingestionWorker:
   env:
     WATCH_ROOTS: /data/watch
+  cronJob:
+    enabled: true
+    schedule: "0 * * * *"
 
 embeddingService:
   env:

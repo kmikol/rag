@@ -45,10 +45,24 @@ spec:
               value: "http://{{ include "rag.fullname" . }}-qdrant:{{ .Values.qdrant.service.port }}"
             - name: EMBEDDING_SERVICE_URL
               value: "http://{{ include "rag.fullname" . }}-embedding-service:{{ .Values.embeddingService.service.port }}"
+            {{- with .Values.apiService.apiKey.existingSecret }}
+            - name: RAG_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.apiService.apiKey.secretKey }}
+            {{- end }}
             {{- range $key, $value := .Values.apiService.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- with .Values.apiService.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.apiService.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.apiService.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
@@ -120,7 +134,7 @@ spec:
         paths:
           {{- range .paths }}
           - path: {{ .path }}
-            pathType: {{ .pathType }}
+            pathType: {{ default "Prefix" .pathType }}
             backend:
               service:
                 name: {{ include "rag.fullname" $ }}-api

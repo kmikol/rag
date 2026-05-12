@@ -128,26 +128,6 @@ sudo chmod 755 pg-data
 >
 > At this point `pgdata/` inside is already owned by `999:999` — postgres set that up itself during init. The parent is now locked down to uid 999 only.
 
-### Enable the TUN device
-
-Synology doesn't create `/dev/net/tun` by default. Create it:
-
-```bash
-sudo mkdir -p /dev/net
-sudo mknod /dev/net/tun c 10 200
-sudo chmod 0666 /dev/net/tun
-```
-
-**Make this persist across reboots** — in DSM go to Control Panel → Task Scheduler → Create → Triggered Task → Boot-up, run as root, with this script:
-
-```bash
-mkdir -p /dev/net
-mknod /dev/net/tun c 10 200 2>/dev/null || true
-chmod 0666 /dev/net/tun
-```
-
----
-
 ## Part 4 — Configuration Files
 
 ### 4.1 `.env`

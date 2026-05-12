@@ -5,7 +5,8 @@ metadata:
   name: {{ include "rag.fullname" . }}
   labels:
     {{- include "rag.labels" . | nindent 4 }}
-rules: []
+rules:
+  {{- toYaml .Values.rbac.rules | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

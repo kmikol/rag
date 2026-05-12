@@ -26,6 +26,14 @@ spec:
         - name: ingestion-worker
           image: "{{ .Values.ingestionWorker.image.repository }}:{{ default .Chart.AppVersion .Values.ingestionWorker.image.tag }}"
           imagePullPolicy: {{ .Values.ingestionWorker.image.pullPolicy }}
+          {{- with .Values.ingestionWorker.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.ingestionWorker.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: {{ .Values.ingestionWorker.containerPort }}
           env:
@@ -49,6 +57,13 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- with .Values.ingestionWorker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.ingestionWorker.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.ingestionWorker.resources | nindent 12 }}
           {{- if .Values.ingestionWorker.persistence.enabled }}
