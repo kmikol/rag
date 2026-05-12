@@ -32,9 +32,12 @@ oci://ghcr.io/kmikol/charts/rag
 
 The workflow strips a leading `v` from release tags, so release tag `v0.1.0`
 publishes chart version `0.1.0`. It packages the chart with both `version` and
-`appVersion` set to the same semantic version, then refuses to push if that
-chart version already exists in GHCR. Cluster repositories should pin the chart
-by version instead of tracking an unversioned reference.
+`appVersion` set to the same semantic version. Chart versions must not use
+SemVer build metadata (`+...`) because GHCR stores OCI chart versions as
+registry tags. The publish job serializes by normalized chart version, then
+refuses to push if that chart version already exists in GHCR. Cluster
+repositories should pin the chart by version instead of tracking an unversioned
+reference.
 
 Pull the packaged chart:
 
