@@ -1,0 +1,43 @@
+existingSecret: rag-db-credentials
+
+database:
+  host: postgresql.database.svc.cluster.local
+  port: 5432
+  name: rag
+
+sharedStorage:
+  enabled: true
+  create: false
+  existingClaim: rag-corpus
+  mountPath: /data
+
+apiService:
+  apiKey:
+    existingSecret: rag-api-credentials
+    secretKey: RAG_API_KEY
+  env:
+    WATCH_ROOTS: /data/watch
+    DOCUMENT_STORE_PATH: /data/documents
+    LLM_PROVIDER: openai_compatible
+    LLM_CHAT_COMPLETIONS_URL: http://ollama.default.svc.cluster.local:11434/v1/chat/completions
+    LLM_MODEL: gemma3:4b
+
+ingestionWorker:
+  env:
+    WATCH_ROOTS: /data/watch
+    DOCUMENT_STORE_PATH: /data/documents
+  persistence:
+    enabled: true
+    existingClaim: rag-worker-cache
+
+embeddingService:
+  env:
+    EMBEDDING_BACKEND: ollama
+    EMBEDDING_MODEL_NAME: embeddinggemma
+    EMBEDDING_DIMENSION: "768"
+    EMBEDDING_ENDPOINT_URL: http://ollama.default.svc.cluster.local:11434
+
+qdrant:
+  persistence:
+    enabled: true
+    existingClaim: rag-qdrant

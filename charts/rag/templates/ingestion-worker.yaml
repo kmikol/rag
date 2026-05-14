@@ -66,14 +66,27 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.ingestionWorker.resources | nindent 12 }}
-          {{- if .Values.ingestionWorker.persistence.enabled }}
+          {{- if or .Values.sharedStorage.enabled .Values.ingestionWorker.persistence.enabled }}
           volumeMounts:
+            {{- if .Values.sharedStorage.enabled }}
+            - name: shared-storage
+              mountPath: {{ .Values.sharedStorage.mountPath }}
+            {{- end }}
+            {{- if .Values.ingestionWorker.persistence.enabled }}
             - name: ingestion-worker-data
               mountPath: {{ .Values.ingestionWorker.persistence.mountPath }}
+            {{- end }}
           {{- end }}
-      {{- if .Values.ingestionWorker.persistence.enabled }}
+      {{- if or .Values.sharedStorage.enabled .Values.ingestionWorker.persistence.enabled }}
       volumes:
+        {{- if .Values.sharedStorage.enabled }}
+        - name: shared-storage
+          persistentVolumeClaim:
+            claimName: {{ include "rag.sharedStorageClaimName" . }}
+        {{- end }}
+        {{- if .Values.ingestionWorker.persistence.enabled }}
         - name: ingestion-worker-data
           persistentVolumeClaim:
-            claimName: {{ include "rag.fullname" . }}-ingestion-worker-data
+            claimName: {{ default (printf "%s-ingestion-worker-data" (include "rag.fullname" .)) .Values.ingestionWorker.persistence.existingClaim }}
+        {{- end }}
       {{- end }}

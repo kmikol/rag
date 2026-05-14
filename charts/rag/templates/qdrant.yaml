@@ -46,7 +46,7 @@ spec:
       volumes:
         - name: qdrant-data
           persistentVolumeClaim:
-            claimName: {{ include "rag.fullname" . }}-qdrant-data
+            claimName: {{ default (printf "%s-qdrant-data" (include "rag.fullname" .)) .Values.qdrant.persistence.existingClaim }}
       {{- end }}
 ---
 apiVersion: v1

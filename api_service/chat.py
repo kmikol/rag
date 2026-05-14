@@ -186,7 +186,11 @@ class GoogleGenerateContentLLMClient:
         options: GenerationOptions | None = None,
     ) -> str:
         """Generate one response through Google's native content API."""
-        request_body = _build_google_generate_content_request(messages, options)
+        request_body = _build_google_generate_content_request(
+            messages,
+            options,
+            supports_system_instruction=not _is_gemma_model(self.model_name),
+        )
         payload = json.dumps(request_body).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -327,20 +331,29 @@ def _read_http_error_detail(exc: error.HTTPError) -> str:
 def _build_google_generate_content_request(
     messages: list[dict[str, str]],
     options: GenerationOptions | None,
+    *,
+    supports_system_instruction: bool = True,
 ) -> dict[str, object]:
     contents: list[dict[str, object]] = []
     system_parts: list[dict[str, str]] = []
+    system_texts: list[str] = []
     for message in messages:
         role = message.get("role")
         content = message.get("content")
         if not content:
             continue
         if role == "system":
-            system_parts.append({"text": content})
+            if supports_system_instruction:
+                system_parts.append({"text": content})
+            else:
+                system_texts.append(content)
             continue
 
         google_role = "model" if role == "assistant" else "user"
         contents.append({"role": google_role, "parts": [{"text": content}]})
+
+    if system_texts:
+        _prepend_system_text_to_first_user_content(contents, "\n\n".join(system_texts))
 
     body: dict[str, object] = {"contents": contents}
     if system_parts:
@@ -356,6 +369,36 @@ def _build_google_generate_content_request(
         body["generationConfig"] = generation_config
 
     return body
+
+
+def _is_gemma_model(model_name: str) -> bool:
+    return model_name.lower().startswith("gemma-")
+
+
+def _prepend_system_text_to_first_user_content(
+    contents: list[dict[str, object]],
+    system_text: str,
+) -> None:
+    if not contents or contents[0].get("role") != "user":
+        contents.insert(0, {"role": "user", "parts": [{"text": system_text}]})
+        return
+
+    parts = contents[0].get("parts")
+    if not isinstance(parts, list) or not parts:
+        contents[0]["parts"] = [{"text": system_text}]
+        return
+
+    first_part = parts[0]
+    if not isinstance(first_part, dict):
+        contents[0]["parts"] = [{"text": system_text}]
+        return
+
+    first_text = first_part.get("text")
+    if not isinstance(first_text, str) or not first_text:
+        first_part["text"] = system_text
+        return
+
+    first_part["text"] = f"{system_text}\n\n{first_text}"
 
 
 def _parse_chat_completion(body: dict[str, object]) -> str:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from email.message import Message
 from io import BytesIO
 from typing import Any, Literal
@@ -153,7 +154,7 @@ def test_google_generate_content_client_posts_native_payload(
 
     answer = GoogleGenerateContentLLMClient(
         endpoint_url="https://generativelanguage.googleapis.com/v1beta",
-        model_name="gemma-4-31b-it",
+        model_name="gemini-2.5-flash",
         timeout_seconds=180,
         api_key="secret-token",
     ).complete(
@@ -166,7 +167,7 @@ def test_google_generate_content_client_posts_native_payload(
 
     assert answer == "Grounded answer [1]."
     assert captured["url"] == (
-        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     )
     assert captured["headers"]["X-goog-api-key"] == "secret-token"
     assert captured["timeout"] == 180
@@ -174,6 +175,41 @@ def test_google_generate_content_client_posts_native_payload(
     assert b'"systemInstruction"' in payload
     assert b'"contents"' in payload
     assert b'"maxOutputTokens": 64' in payload
+
+
+def test_google_generate_content_client_folds_system_prompt_for_gemma(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(req: Any, timeout: int) -> FakeResponse:
+        captured["body"] = req.data
+        return FakeResponse(
+            b'{"candidates":[{"content":{"parts":[{"text":"Grounded answer [1]."}]}}]}'
+        )
+
+    monkeypatch.setattr(chat.request, "urlopen", fake_urlopen)
+
+    GoogleGenerateContentLLMClient(
+        endpoint_url="https://generativelanguage.googleapis.com/v1beta",
+        model_name="gemma-4-31b-it",
+        timeout_seconds=180,
+        api_key="secret-token",
+    ).complete(
+        [
+            {"role": "system", "content": "Answer from context."},
+            {"role": "user", "content": "Question"},
+        ]
+    )
+
+    payload = json.loads(captured["body"].decode("utf-8"))
+    assert "systemInstruction" not in payload
+    assert payload["contents"] == [
+        {
+            "role": "user",
+            "parts": [{"text": "Answer from context.\n\nQuestion"}],
+        }
+    ]
 
 
 def test_google_generate_content_client_rejects_missing_text(
