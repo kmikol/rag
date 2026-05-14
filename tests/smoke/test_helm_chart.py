@@ -6,7 +6,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CHART = ROOT / "charts" / "rag"
 EXAMPLES = CHART / "examples"
@@ -89,6 +88,24 @@ def test_existing_storage_values_mount_existing_claims_without_creating_them() -
     qdrant = _find_by_kind_name(docs, "Deployment", "rag-rag-qdrant")
     qdrant_volumes = _volumes_by_name(qdrant["spec"]["template"]["spec"])
     assert qdrant_volumes["qdrant-data"]["persistentVolumeClaim"]["claimName"] == "rag-qdrant"
+
+
+def test_shared_storage_requires_created_or_existing_claim(tmp_path: Path) -> None:
+    values_path = tmp_path / "invalid-shared-storage.yaml"
+    values_path.write_text("sharedStorage:\n  enabled: true\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["helm", "template", "rag", str(CHART), "-f", str(values_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert (
+        "If sharedStorage.enabled is true, either sharedStorage.create must be true "
+        "or sharedStorage.existingClaim must be provided."
+    ) in result.stderr
 
 
 def _helm_template(values_path: Path) -> list[dict[str, Any]]:

@@ -1,3 +1,4 @@
+{{- include "rag.validate" . -}}
 {{- if and .Values.sharedStorage.enabled .Values.sharedStorage.create (not .Values.sharedStorage.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
