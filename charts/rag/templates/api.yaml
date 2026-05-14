@@ -81,16 +81,29 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.apiService.resources | nindent 12 }}
-          {{- if .Values.apiService.persistence.enabled }}
+          {{- if or .Values.sharedStorage.enabled .Values.apiService.persistence.enabled }}
           volumeMounts:
+            {{- if .Values.sharedStorage.enabled }}
+            - name: shared-storage
+              mountPath: {{ .Values.sharedStorage.mountPath }}
+            {{- end }}
+            {{- if .Values.apiService.persistence.enabled }}
             - name: api-data
               mountPath: {{ .Values.apiService.persistence.mountPath }}
+            {{- end }}
           {{- end }}
-      {{- if .Values.apiService.persistence.enabled }}
+      {{- if or .Values.sharedStorage.enabled .Values.apiService.persistence.enabled }}
       volumes:
+        {{- if .Values.sharedStorage.enabled }}
+        - name: shared-storage
+          persistentVolumeClaim:
+            claimName: {{ include "rag.sharedStorageClaimName" . }}
+        {{- end }}
+        {{- if .Values.apiService.persistence.enabled }}
         - name: api-data
           persistentVolumeClaim:
-            claimName: {{ include "rag.fullname" . }}-api-data
+            claimName: {{ default (printf "%s-api-data" (include "rag.fullname" .)) .Values.apiService.persistence.existingClaim }}
+        {{- end }}
       {{- end }}
 ---
 apiVersion: v1

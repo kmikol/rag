@@ -13,6 +13,17 @@ rbac:
 
 existingSecret: rag-db-credentials
 
+sharedStorage:
+  enabled: false
+  create: false
+  existingClaim: ""
+  name: ""
+  size: 100Gi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  mountPath: /data
+
 apiService:
   replicas: 1
   image:
@@ -48,6 +59,7 @@ apiService:
   extraEnv: []
   persistence:
     enabled: false
+    existingClaim: ""
     size: 10Gi
     accessModes:
       - ReadWriteOnce
@@ -82,6 +94,7 @@ ingestionWorker:
       - --fail-on-error
   persistence:
     enabled: false
+    existingClaim: ""
     size: 20Gi
     accessModes:
       - ReadWriteOnce
@@ -127,6 +140,7 @@ qdrant:
   env: {}
   persistence:
     enabled: false
+    existingClaim: ""
     size: 10Gi
     accessModes:
       - ReadWriteOnce

@@ -67,3 +67,15 @@ Image tags are intended for deployments, but tags can be moved if republished; p
 - Manually selected release version tags (for example: `0.0.1`) via Git tag (`v0.0.1`) or manual workflow dispatch input.
 
 Avoid using `latest` for cluster deployments.
+
+## Helm Chart
+
+The reusable Kubernetes chart is published as an OCI Helm chart:
+
+```text
+oci://ghcr.io/<owner>/charts/rag
+```
+
+Release deployments should pin a concrete chart version and matching service
+image tags. The cluster repository owns environment-specific values, storage
+classes, ingress hosts, and secret manifests.

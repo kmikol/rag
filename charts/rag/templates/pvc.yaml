@@ -1,4 +1,20 @@
-{{- if .Values.apiService.persistence.enabled }}
+{{- if and .Values.sharedStorage.enabled .Values.sharedStorage.create (not .Values.sharedStorage.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag.sharedStorageClaimName" . }}
+spec:
+  accessModes:
+    {{- toYaml .Values.sharedStorage.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.size }}
+  {{- with .Values.sharedStorage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+---
+{{- end }}
+{{- if and .Values.apiService.persistence.enabled (not .Values.apiService.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -14,7 +30,7 @@ spec:
   {{- end }}
 ---
 {{- end }}
-{{- if .Values.ingestionWorker.persistence.enabled }}
+{{- if and .Values.ingestionWorker.persistence.enabled (not .Values.ingestionWorker.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -30,7 +46,7 @@ spec:
   {{- end }}
 ---
 {{- end }}
-{{- if .Values.qdrant.persistence.enabled }}
+{{- if and .Values.qdrant.persistence.enabled (not .Values.qdrant.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

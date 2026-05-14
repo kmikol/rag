@@ -23,3 +23,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "rag.sharedStorageClaimName" -}}
+{{- if .Values.sharedStorage.existingClaim -}}
+{{- .Values.sharedStorage.existingClaim -}}
+{{- else if .Values.sharedStorage.name -}}
+{{- .Values.sharedStorage.name -}}
+{{- else -}}
+{{- printf "%s-shared-storage" (include "rag.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}

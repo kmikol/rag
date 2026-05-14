@@ -1,5 +1,14 @@
 existingSecret: rag-db-credentials
 
+sharedStorage:
+  enabled: true
+  create: true
+  size: 100Gi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn-r2
+  mountPath: /data
+
 database:
   host: postgresql.database.svc.cluster.local
   port: 5432
@@ -9,6 +18,24 @@ apiService:
   apiKey:
     existingSecret: rag-api-credentials
     secretKey: RAG_API_KEY
+  env:
+    QDRANT_COLLECTION: rag_chunks
+    WATCH_ROOTS: /data/watch
+    DOCUMENT_STORE_PATH: /data/documents
+    LLM_PROVIDER: openai_compatible
+    LLM_CHAT_COMPLETIONS_URL: http://ollama.default.svc.cluster.local:11434/v1/chat/completions
+    LLM_MODEL: gemma3:4b
+    LLM_TIMEOUT_SECONDS: "120"
+    CHAT_MIN_TOP_SCORE: "0.5"
+    CHAT_MIN_USABLE_CHUNKS: "1"
+    CHAT_MAX_CONTEXT_CHUNKS: "5"
+    CHAT_MAX_CHUNK_CHARS: "2000"
+  extraEnv:
+    - name: LLM_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: rag-llm-credentials
+          key: LLM_API_KEY
   ingress:
     enabled: true
     className: traefik
@@ -21,16 +48,61 @@ apiService:
         paths:
           - path: /rag
             pathType: Prefix
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 ingestionWorker:
+  env:
+    QDRANT_COLLECTION: rag_chunks
+    WATCH_ROOTS: /data/watch
+    DOCUMENT_STORE_PATH: /data/documents
   cronJob:
     enabled: true
     schedule: "0 * * * *"
-  persistence:
-    enabled: true
-    storageClassName: longhorn
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+embeddingService:
+  env:
+    EMBEDDING_BACKEND: ollama
+    EMBEDDING_MODEL_NAME: embeddinggemma
+    EMBEDDING_DIMENSION: "768"
+    EMBEDDING_ENDPOINT_URL: http://ollama.default.svc.cluster.local:11434
+    EMBEDDING_TIMEOUT_SECONDS: "30"
+    EMBEDDING_KEEP_ALIVE: 5m
+  extraEnv:
+    - name: EMBEDDING_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: rag-embedding-credentials
+          key: EMBEDDING_API_KEY
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 qdrant:
   persistence:
     enabled: true
-    storageClassName: longhorn
+    storageClassName: longhorn-r2
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
