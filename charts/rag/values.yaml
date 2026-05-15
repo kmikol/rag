@@ -11,8 +11,6 @@ rbac:
   create: false
   rules: []
 
-existingSecret: rag-db-credentials
-
 sharedStorage:
   enabled: false
   create: false
@@ -148,8 +146,36 @@ qdrant:
     mountPath: /qdrant/storage
 
 database:
+  existingSecret: rag-db-credentials
   host: postgresql
   port: 5432
   name: rag
   userSecretKey: DB_USER
   passwordSecretKey: DB_PASSWORD
+
+postgresql:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+  containerPort: 5432
+  env:
+    PGDATA: /var/lib/postgresql/data/pgdata
+  resources: {}
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+  persistence:
+    enabled: false
+    existingClaim: ""
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
+    mountPath: /var/lib/postgresql/data

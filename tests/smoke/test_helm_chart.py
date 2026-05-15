@@ -32,6 +32,7 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
     pvc_names = {doc["metadata"]["name"] for doc in _find_kind(docs, "PersistentVolumeClaim")}
     assert "rag-rag-shared-storage" in pvc_names
     assert "rag-rag-qdrant-data" in pvc_names
+    assert "rag-rag-postgresql-data" in pvc_names
 
     shared_pvc = _find_by_kind_name(docs, "PersistentVolumeClaim", "rag-rag-shared-storage")
     assert shared_pvc["spec"]["accessModes"] == ["ReadWriteMany"]
@@ -40,11 +41,36 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
     qdrant_pvc = _find_by_kind_name(docs, "PersistentVolumeClaim", "rag-rag-qdrant-data")
     assert qdrant_pvc["spec"]["storageClassName"] == "longhorn-r2"
 
+    postgresql_pvc = _find_by_kind_name(docs, "PersistentVolumeClaim", "rag-rag-postgresql-data")
+    assert postgresql_pvc["spec"]["storageClassName"] == "longhorn-r2"
+
+    postgresql = _find_by_kind_name(docs, "StatefulSet", "rag-rag-postgresql")
+    postgresql_container = _container(postgresql, "postgresql")
+    postgresql_env = _env_by_name(postgresql_container)
+    assert postgresql_env["POSTGRES_DB"]["value"] == "rag"
+    assert (
+        postgresql_env["POSTGRES_USER"]["valueFrom"]["secretKeyRef"]["name"] == "rag-db-credentials"
+    )
+    assert (
+        postgresql_env["POSTGRES_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"]
+        == "rag-db-credentials"
+    )
+
     api = _find_by_kind_name(docs, "Deployment", "rag-rag-api")
     api_container = _container(api, "api-service")
     api_env = _env_by_name(api_container)
+    assert (
+        api_env["POSTGRES_URL"]["value"]
+        == "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)"
+        "@rag-rag-postgresql:5432/rag"
+    )
     assert api_env["RAG_API_KEY"]["valueFrom"]["secretKeyRef"]["name"] == "rag-api-credentials"
     assert api_env["LLM_API_KEY"]["valueFrom"]["secretKeyRef"]["name"] == "rag-llm-credentials"
+    assert api_env["LLM_PROVIDER"]["value"] == "google_genai"
+    assert (
+        api_env["LLM_ENDPOINT_URL"]["value"] == "https://generativelanguage.googleapis.com/v1beta"
+    )
+    assert api_env["LLM_MODEL"]["value"] == "gemini-3.1-flash-lite"
     assert api_env["WATCH_ROOTS"]["value"] == "/data/watch"
     assert api_env["DOCUMENT_STORE_PATH"]["value"] == "/data/documents"
     assert _volume_mounts_by_name(api_container)["shared-storage"]["mountPath"] == "/data"
@@ -58,6 +84,8 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
 
     embedding = _find_by_kind_name(docs, "Deployment", "rag-rag-embedding-service")
     embedding_env = _env_by_name(_container(embedding, "embedding-service"))
+    assert embedding_env["EMBEDDING_BACKEND"]["value"] == "google"
+    assert embedding_env["EMBEDDING_MODEL_NAME"]["value"] == "gemini-embedding-2"
     assert (
         embedding_env["EMBEDDING_API_KEY"]["valueFrom"]["secretKeyRef"]["name"]
         == "rag-embedding-credentials"

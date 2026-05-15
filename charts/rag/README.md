@@ -12,10 +12,11 @@ Set these values for a production-like deployment:
 
 | Value | Purpose |
 | --- | --- |
-| `existingSecret` | Kubernetes Secret containing PostgreSQL credentials. |
-| `database.host` | PostgreSQL host reachable from the cluster. |
+| `database.existingSecret` | Kubernetes Secret containing PostgreSQL credentials. |
+| `database.host` | PostgreSQL host reachable from the cluster when `postgresql.enabled=false`. |
 | `database.port` | PostgreSQL port. |
 | `database.name` | PostgreSQL database name. |
+| `postgresql` | Optional chart-owned PostgreSQL workload and storage. |
 | `apiService.apiKey.existingSecret` | Kubernetes Secret containing the API bearer token. |
 | `apiService.env.WATCH_ROOTS` | Source corpus path list as seen by the API container. |
 | `apiService.env.DOCUMENT_STORE_PATH` | Managed document-copy path as seen by the API container. |
@@ -28,8 +29,11 @@ Set these values for a production-like deployment:
 | `qdrant.persistence` | Durable vector-store storage configuration. |
 
 The chart builds `POSTGRES_URL` for `api-service` and `ingestion-worker` from
-`existingSecret` and `database.*`. It sets in-cluster `QDRANT_URL` and
-`EMBEDDING_SERVICE_URL` values for the API and worker.
+`database.existingSecret` and `database.*`. When `postgresql.enabled=true`, the database
+host resolves to the chart-owned PostgreSQL Service. Otherwise, `database.host`
+must point at an external PostgreSQL service reachable from the cluster. The
+chart also sets in-cluster `QDRANT_URL` and `EMBEDDING_SERVICE_URL` values for
+the API and worker.
 
 ## Secrets
 
@@ -48,10 +52,12 @@ without inspecting application internals.
 
 ## Storage Contract
 
-Qdrant storage is backup-sensitive state and should use durable storage. The
-managed document store is also backup-sensitive unless source watch roots are
-the only recovery source you intend to keep. PostgreSQL is external to this
-chart and must be backed up outside the chart.
+Qdrant and PostgreSQL storage are backup-sensitive state and should use durable
+storage. The managed document store is also backup-sensitive unless source
+watch roots are the only recovery source you intend to keep. If PostgreSQL is
+external to this chart, it must be backed up outside the chart. If
+`postgresql.enabled=true`, the chart creates the database workload, service, and
+optional PVC, but database backup still remains an operator responsibility.
 
 The chart supports both chart-created PVCs and existing claims:
 
@@ -84,10 +90,12 @@ components so document deletion and ingestion operate on the same files.
 
 ## External Dependencies
 
-This chart does not deploy PostgreSQL, Ollama, or external LLM providers.
+This chart can deploy PostgreSQL, but it does not deploy Ollama or external LLM
+providers.
 Deployment repositories must provide:
 
-- PostgreSQL reachable from the cluster.
+- PostgreSQL reachable from the cluster, or set `postgresql.enabled=true` for a
+  chart-owned PostgreSQL instance.
 - Any required database schema migration process before serving real traffic.
 - Embedding endpoint placement, for example an in-cluster Ollama service or a
   private LAN/Tailnet endpoint.

@@ -61,4 +61,20 @@ spec:
   {{- with .Values.qdrant.persistence.storageClassName }}
   storageClassName: {{ . }}
   {{- end }}
+---
+{{- end }}
+{{- if and .Values.postgresql.enabled .Values.postgresql.persistence.enabled (not .Values.postgresql.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag.fullname" . }}-postgresql-data
+spec:
+  accessModes:
+    {{- toYaml .Values.postgresql.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size }}
+  {{- with .Values.postgresql.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
 {{- end }}

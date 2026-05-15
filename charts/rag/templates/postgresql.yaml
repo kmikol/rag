@@ -1,0 +1,101 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "rag.fullname" . }}-postgresql
+  labels:
+    {{- include "rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  serviceName: {{ include "rag.fullname" . }}-postgresql
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      serviceAccountName: {{ include "rag.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.postgresql.containerPort }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.database.name | quote }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rag.databaseSecretName" . }}
+                  key: {{ .Values.database.userSecretKey }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rag.databaseSecretName" . }}
+                  key: {{ .Values.database.passwordSecretKey }}
+            {{- range $key, $value := .Values.postgresql.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - {{ .Values.database.name }}
+            initialDelaySeconds: {{ .Values.postgresql.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.readinessProbe.periodSeconds }}
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - {{ .Values.database.name }}
+            initialDelaySeconds: {{ .Values.postgresql.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.livenessProbe.periodSeconds }}
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          {{- if .Values.postgresql.persistence.enabled }}
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: {{ .Values.postgresql.persistence.mountPath }}
+          {{- end }}
+      {{- if .Values.postgresql.persistence.enabled }}
+      volumes:
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-postgresql-data" (include "rag.fullname" .)) .Values.postgresql.persistence.existingClaim }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rag.fullname" . }}-postgresql
+  labels:
+    {{- include "rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: {{ .Values.postgresql.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - port: {{ .Values.database.port }}
+      targetPort: {{ .Values.postgresql.containerPort }}
+      protocol: TCP
+      name: postgresql
+{{- end }}

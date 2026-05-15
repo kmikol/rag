@@ -20,8 +20,11 @@ cluster manifests.
 
 The cluster values must provide:
 
-- `existingSecret` pointing at `rag-db-credentials`.
-- `database.host`, `database.port`, and `database.name`.
+- `database.existingSecret` pointing at `rag-db-credentials`.
+- `database.port` and `database.name`.
+- `database.host` when `postgresql.enabled=false`; otherwise the chart uses the
+  chart-owned PostgreSQL Service.
+- `postgresql` configuration when the deployment should own its own database.
 - `apiService.apiKey.existingSecret` pointing at `rag-api-credentials`.
 - `apiService.env.WATCH_ROOTS` and `apiService.env.DOCUMENT_STORE_PATH`.
 - `ingestionWorker.env.WATCH_ROOTS` and `ingestionWorker.env.DOCUMENT_STORE_PATH`.
@@ -33,9 +36,10 @@ The cluster values must provide:
 
 ## Storage
 
-PostgreSQL is external and must be backed up outside this chart. Qdrant is
-backup-sensitive state. The managed document store is backup-sensitive unless
-the source corpus is the only recovery source you intend to keep.
+PostgreSQL and Qdrant are backup-sensitive state. The managed document store is
+backup-sensitive unless the source corpus is the only recovery source you
+intend to keep. If `postgresql.enabled=true`, this chart creates PostgreSQL and
+its optional PVC, but backup remains an operator responsibility.
 
 The chart supports both storage ownership models:
 
@@ -63,9 +67,9 @@ ingestionWorker:
 
 ## External Dependencies
 
-The chart does not deploy PostgreSQL, Ollama, or LLM providers. The cluster
-configuration must define where those services live and whether they are
-reachable through Kubernetes DNS, LAN DNS, or Tailscale.
+The chart can deploy PostgreSQL, but it does not deploy Ollama or LLM
+providers. The cluster configuration must define whether PostgreSQL is
+chart-owned or external, and where model/provider services live.
 
 Changing the embedding backend, model name, or vector dimension requires a new
 Qdrant collection or full reingestion.
