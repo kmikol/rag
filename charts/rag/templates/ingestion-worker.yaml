@@ -48,7 +48,7 @@ spec:
                   name: {{ required "existingSecret is required" .Values.existingSecret }}
                   key: {{ .Values.database.passwordSecretKey }}
             - name: POSTGRES_URL
-              value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ required "database.host is required" .Values.database.host }}:{{ .Values.database.port }}/{{ required "database.name is required" .Values.database.name }}"
+              value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "rag.databaseHost" . }}:{{ .Values.database.port }}/{{ required "database.name is required" .Values.database.name }}"
             - name: QDRANT_URL
               value: "http://{{ include "rag.fullname" . }}-qdrant:{{ .Values.qdrant.service.port }}"
             - name: EMBEDDING_SERVICE_URL

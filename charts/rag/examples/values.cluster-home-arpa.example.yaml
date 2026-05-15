@@ -10,9 +10,22 @@ sharedStorage:
   mountPath: /data
 
 database:
-  host: postgresql.database.svc.cluster.local
   port: 5432
   name: rag
+
+postgresql:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: longhorn-r2
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 apiService:
   apiKey:
@@ -22,10 +35,10 @@ apiService:
     QDRANT_COLLECTION: rag_chunks
     WATCH_ROOTS: /data/watch
     DOCUMENT_STORE_PATH: /data/documents
-    LLM_PROVIDER: openai_compatible
-    LLM_CHAT_COMPLETIONS_URL: http://ollama.default.svc.cluster.local:11434/v1/chat/completions
-    LLM_MODEL: gemma3:4b
-    LLM_TIMEOUT_SECONDS: "120"
+    LLM_PROVIDER: google_genai
+    LLM_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
+    LLM_MODEL: gemini-3.1-flash-lite
+    LLM_TIMEOUT_SECONDS: "180"
     CHAT_MIN_TOP_SCORE: "0.5"
     CHAT_MIN_USABLE_CHUNKS: "1"
     CHAT_MAX_CONTEXT_CHUNKS: "5"
@@ -74,11 +87,11 @@ ingestionWorker:
 
 embeddingService:
   env:
-    EMBEDDING_BACKEND: ollama
-    EMBEDDING_MODEL_NAME: embeddinggemma
+    EMBEDDING_BACKEND: google
+    EMBEDDING_MODEL_NAME: gemini-embedding-2
     EMBEDDING_DIMENSION: "768"
-    EMBEDDING_ENDPOINT_URL: http://ollama.default.svc.cluster.local:11434
-    EMBEDDING_TIMEOUT_SECONDS: "30"
+    EMBEDDING_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
+    EMBEDDING_TIMEOUT_SECONDS: "60"
     EMBEDDING_KEEP_ALIVE: 5m
   extraEnv:
     - name: EMBEDDING_API_KEY

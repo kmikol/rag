@@ -34,6 +34,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "rag.databaseHost" -}}
+{{- if .Values.postgresql.enabled -}}
+{{- printf "%s-postgresql" (include "rag.fullname" .) -}}
+{{- else -}}
+{{- required "database.host is required when postgresql.enabled is false" .Values.database.host -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "rag.validate" -}}
 {{- if and .Values.sharedStorage.enabled (not .Values.sharedStorage.create) (not .Values.sharedStorage.existingClaim) -}}
 {{- fail "If sharedStorage.enabled is true, either sharedStorage.create must be true or sharedStorage.existingClaim must be provided." -}}

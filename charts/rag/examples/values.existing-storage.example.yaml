@@ -5,6 +5,9 @@ database:
   port: 5432
   name: rag
 
+postgresql:
+  enabled: false
+
 sharedStorage:
   enabled: true
   create: false

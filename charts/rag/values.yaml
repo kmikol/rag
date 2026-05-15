@@ -153,3 +153,30 @@ database:
   name: rag
   userSecretKey: DB_USER
   passwordSecretKey: DB_PASSWORD
+
+postgresql:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+  containerPort: 5432
+  env:
+    PGDATA: /var/lib/postgresql/data/pgdata
+  resources: {}
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+  persistence:
+    enabled: false
+    existingClaim: ""
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
+    mountPath: /var/lib/postgresql/data
