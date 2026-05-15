@@ -110,7 +110,7 @@ test.e2e: ## Run provider-backed end-to-end RAG tests in Docker
 	if [ $$EXIT -ne 0 ]; then \
 		echo "E2E test failed; collecting Docker Compose diagnostics before teardown"; \
 		$(E2E_COMPOSE) ps; \
-		$(E2E_COMPOSE) logs --no-color api-service embedding-service ingestion-worker test; \
+		$(E2E_COMPOSE) logs --no-color; \
 	fi; \
 	$(E2E_COMPOSE) down -v; \
 	exit $$EXIT
