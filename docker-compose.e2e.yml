@@ -56,7 +56,7 @@ services:
       EMBEDDING_MODEL_NAME: gemini-embedding-2
       LLM_PROVIDER: google_genai
       LLM_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
-      LLM_MODEL: gemma-4-31b-it
+      LLM_MODEL: gemini-3.1-flash-lite
       LLM_API_KEY: ${GEMINI_API_KEY_E2E_TEST:?Set GEMINI_API_KEY_E2E_TEST}
       LLM_TIMEOUT_SECONDS: 180
       CHAT_MIN_TOP_SCORE: 0.5

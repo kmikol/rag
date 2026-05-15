@@ -47,7 +47,7 @@ GEMINI_API_KEY_E2E_TEST=...
 
 The E2E Compose stack sets `EMBEDDING_MODEL_NAME=gemini-embedding-2` for
 Google embeddings and fixes the chat model to Google's API model id
-`gemma-4-31b-it`.
+`gemini-3.1-flash-lite`.
 
 Run:
 
