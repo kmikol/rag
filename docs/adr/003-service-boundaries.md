@@ -7,6 +7,7 @@
 | Status       | Accepted                                   |
 | Deciders     | System owner                               |
 | Date         | 2025-04-24                                 |
+| Last Reviewed| 2026-05-15                                 |
 | Supersedes   | —                                          |
 | Depends on   | ADR-000, ADR-001, ADR-002                  |
 
@@ -14,7 +15,7 @@
 
 ## Context
 
-The system should be deployable as a collection of Docker services that can be moved between machines on the owner's Tailscale network. At the same time, this is a single-user personal system, so the first implementation should avoid unnecessary distributed-system complexity.
+The system should be deployable as Kubernetes workloads (primary) and as Docker services for local development, while remaining movable between machines on the owner's Tailscale network. At the same time, this is a single-user personal system, so the first implementation should avoid unnecessary distributed-system complexity.
 
 The main application responsibilities are:
 
@@ -49,10 +50,10 @@ The first implementation will use a **hybrid service split**:
   - Writes managed document copies, PostgreSQL metadata, and Qdrant vectors.
 
 - `postgres`
-  - Central metadata store, served from the NAS as decided in ADR-002.
+  - Central metadata store, reachable from the cluster as decided in ADR-002.
 
 - `qdrant`
-  - Independent vector store Docker service, defaulting to NAS deployment as decided in ADR-002.
+  - Independent vector store service with durable storage as decided in ADR-002.
 
 - `ollama`
   - Generation model server, running on the GPU-capable machine or another configured host.
@@ -73,7 +74,7 @@ The codebase should still preserve clear module boundaries so a future architect
 
 ## Implications
 
-- API and ingestion worker must be separate Docker images or separately runnable service commands.
+- API and ingestion worker must be separate deployable workloads (separate images/commands).
 - Both services need access to PostgreSQL and Qdrant configuration.
 - The ingestion worker needs access to configured watch roots and the managed document store.
 - The API service should not perform heavy ingestion work directly; `POST /ingest` should create or request a job for the worker to execute.

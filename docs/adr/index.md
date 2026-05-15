@@ -19,7 +19,7 @@ Each ADR follows a standard format:
 |----|-------|--------|---------|
 | [000](000-problem-definition-and-scope.md) | Problem Definition and Scope | Accepted | Defines the single-user, self-hosted, local-model RAG system scope and constraints |
 | [001](001-data-sources-and-ingestion.md) | Data Sources and Ingestion | Accepted | Watch directories are authoritative; PDF and Markdown are initial formats |
-| [002](002-storage-and-metadata-topology.md) | Storage and Metadata Topology | Accepted | PostgreSQL runs centrally on NAS; Qdrant is an independent movable Docker service |
+| [002](002-storage-and-metadata-topology.md) | Storage and Metadata Topology | Accepted | PostgreSQL is central and cluster-reachable; Qdrant is an independent movable service with durable storage |
 | [003](003-service-boundaries.md) | Service Boundaries | Accepted | Initial split uses `api-service` and `ingestion-worker`, with retrieval/generation internal to API |
 | [004](004-embedding-service.md) | Embedding Service | Accepted | Dedicated `embedding-service` handles query and batch embeddings |
 | [005](005-document-identity-and-ingestion-state.md) | Document Identity and Ingestion State | Accepted | Logical documents have immutable indexed versions and explicit ingestion states |
@@ -50,3 +50,8 @@ Each ADR follows a standard format:
 2. **Local but movable**: Services should run privately and move between machines by configuration.
 3. **Simple first, extensible later**: Use clear interfaces and defer heavier infrastructure until it is justified.
 4. **Observable decisions**: Architecture choices should be documented and traceable.
+
+
+## ADR Review Log
+
+- **2026-05-15**: Reviewed ADR-002, ADR-003, and ADR-004 to align deployment language with Kubernetes-first runtime direction while preserving private Tailscale/LAN assumptions.
