@@ -1,5 +1,3 @@
-existingSecret: rag-db-credentials
-
 sharedStorage:
   enabled: true
   create: true
@@ -10,6 +8,7 @@ sharedStorage:
   mountPath: /data
 
 database:
+  existingSecret: rag-db-credentials
   port: 5432
   name: rag
 

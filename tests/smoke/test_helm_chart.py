@@ -48,20 +48,28 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
     postgresql_container = _container(postgresql, "postgresql")
     postgresql_env = _env_by_name(postgresql_container)
     assert postgresql_env["POSTGRES_DB"]["value"] == "rag"
-    assert postgresql_env["POSTGRES_USER"]["valueFrom"]["secretKeyRef"]["name"] == "rag-db-credentials"
-    assert postgresql_env["POSTGRES_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"] == "rag-db-credentials"
+    assert (
+        postgresql_env["POSTGRES_USER"]["valueFrom"]["secretKeyRef"]["name"] == "rag-db-credentials"
+    )
+    assert (
+        postgresql_env["POSTGRES_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"]
+        == "rag-db-credentials"
+    )
 
     api = _find_by_kind_name(docs, "Deployment", "rag-rag-api")
     api_container = _container(api, "api-service")
     api_env = _env_by_name(api_container)
     assert (
         api_env["POSTGRES_URL"]["value"]
-        == "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@rag-rag-postgresql:5432/rag"
+        == "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)"
+        "@rag-rag-postgresql:5432/rag"
     )
     assert api_env["RAG_API_KEY"]["valueFrom"]["secretKeyRef"]["name"] == "rag-api-credentials"
     assert api_env["LLM_API_KEY"]["valueFrom"]["secretKeyRef"]["name"] == "rag-llm-credentials"
     assert api_env["LLM_PROVIDER"]["value"] == "google_genai"
-    assert api_env["LLM_ENDPOINT_URL"]["value"] == "https://generativelanguage.googleapis.com/v1beta"
+    assert (
+        api_env["LLM_ENDPOINT_URL"]["value"] == "https://generativelanguage.googleapis.com/v1beta"
+    )
     assert api_env["LLM_MODEL"]["value"] == "gemini-3.1-flash-lite"
     assert api_env["WATCH_ROOTS"]["value"] == "/data/watch"
     assert api_env["DOCUMENT_STORE_PATH"]["value"] == "/data/documents"

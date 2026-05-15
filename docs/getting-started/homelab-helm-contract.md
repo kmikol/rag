@@ -20,7 +20,7 @@ cluster manifests.
 
 The cluster values must provide:
 
-- `existingSecret` pointing at `rag-db-credentials`.
+- `database.existingSecret` pointing at `rag-db-credentials`.
 - `database.port` and `database.name`.
 - `database.host` when `postgresql.enabled=false`; otherwise the chart uses the
   chart-owned PostgreSQL Service.

@@ -42,6 +42,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "rag.databaseSecretName" -}}
+{{- required "database.existingSecret is required" .Values.database.existingSecret -}}
+{{- end -}}
+
 {{- define "rag.validate" -}}
 {{- if and .Values.sharedStorage.enabled (not .Values.sharedStorage.create) (not .Values.sharedStorage.existingClaim) -}}
 {{- fail "If sharedStorage.enabled is true, either sharedStorage.create must be true or sharedStorage.existingClaim must be provided." -}}

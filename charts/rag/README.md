@@ -12,7 +12,7 @@ Set these values for a production-like deployment:
 
 | Value | Purpose |
 | --- | --- |
-| `existingSecret` | Kubernetes Secret containing PostgreSQL credentials. |
+| `database.existingSecret` | Kubernetes Secret containing PostgreSQL credentials. |
 | `database.host` | PostgreSQL host reachable from the cluster when `postgresql.enabled=false`. |
 | `database.port` | PostgreSQL port. |
 | `database.name` | PostgreSQL database name. |
@@ -29,7 +29,7 @@ Set these values for a production-like deployment:
 | `qdrant.persistence` | Durable vector-store storage configuration. |
 
 The chart builds `POSTGRES_URL` for `api-service` and `ingestion-worker` from
-`existingSecret` and `database.*`. When `postgresql.enabled=true`, the database
+`database.existingSecret` and `database.*`. When `postgresql.enabled=true`, the database
 host resolves to the chart-owned PostgreSQL Service. Otherwise, `database.host`
 must point at an external PostgreSQL service reachable from the cluster. The
 chart also sets in-cluster `QDRANT_URL` and `EMBEDDING_SERVICE_URL` values for

@@ -40,12 +40,12 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  name: {{ include "rag.databaseSecretName" . }}
                   key: {{ .Values.database.userSecretKey }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  name: {{ include "rag.databaseSecretName" . }}
                   key: {{ .Values.database.passwordSecretKey }}
             - name: POSTGRES_URL
               value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "rag.databaseHost" . }}:{{ .Values.database.port }}/{{ required "database.name is required" .Values.database.name }}"

@@ -11,8 +11,6 @@ rbac:
   create: false
   rules: []
 
-existingSecret: rag-db-credentials
-
 sharedStorage:
   enabled: false
   create: false
@@ -148,6 +146,7 @@ qdrant:
     mountPath: /qdrant/storage
 
 database:
+  existingSecret: rag-db-credentials
   host: postgresql
   port: 5432
   name: rag

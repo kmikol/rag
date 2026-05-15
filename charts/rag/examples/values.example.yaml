@@ -1,6 +1,5 @@
-existingSecret: rag-db-credentials
-
 database:
+  existingSecret: rag-db-credentials
   host: postgresql.database.svc.cluster.local
   port: 5432
   name: rag
