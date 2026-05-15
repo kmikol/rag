@@ -1,7 +1,7 @@
 # Getting Started: Deploy and Use the RAG
 
-This guide describes how to deploy the personal RAG system on a NAS, server, or
-private LAN/Tailscale host, then ingest documents and query them through the API.
+This guide describes how to deploy the personal RAG system on a personal Kubernetes
+cluster (private LAN/Tailscale), then ingest documents and query them through the API.
 
 The system is single-user and private. Keep it on a trusted private network
 unless a future deployment adds a reverse proxy, TLS, and stronger exposure
@@ -152,12 +152,11 @@ Use `:` between multiple watch roots on Linux-based servers. Every path listed
 in `WATCH_ROOTS` must be mounted into both `api-service` and
 `ingestion-worker`.
 
-## Compose Example for a NAS or Server
+## Local Docker Compose (Development Only)
 
-The checked-in `docker-compose.yml` is a local development baseline. For a
-server deployment, add persistent volumes and real env files. This example keeps
-all application services on the NAS/server and points them at an Ollama host on
-the private network:
+The checked-in `docker-compose.yml` is a local development baseline only.
+Primary runtime deployments should use the Helm chart and cluster-owned values/secrets.
+Use this Compose example only for local iteration or troubleshooting outside the cluster:
 
 ```yaml
 services:
@@ -239,7 +238,7 @@ a reviewed public-access setup.
 
 ## First Start
 
-Build the images and start the long-running services:
+For local development, build the images and start services:
 
 ```bash
 docker compose up -d --build postgres qdrant embedding-service api-service ingestion-worker

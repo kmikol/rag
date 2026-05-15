@@ -40,11 +40,11 @@ Serve the documentation locally:
 make docs.serve.local
 ```
 
-## Planned Runtime Prerequisites
+## Runtime Deployment Prerequisites (Kubernetes-first)
 
-- Docker or Docker-compatible runtime.
+- Kubernetes cluster with Helm (primary runtime target).
 - Access to the private Tailscale/LAN network.
-- NAS-hosted PostgreSQL.
-- Qdrant Docker service, defaulting to NAS placement.
+- PostgreSQL reachable from the cluster (often external to the chart).
+- Qdrant deployed by the chart with durable storage, or an equivalent managed deployment.
 - Ollama on the model host.
 - Configured watch roots containing supported documents.

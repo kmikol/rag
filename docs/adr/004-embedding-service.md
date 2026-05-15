@@ -7,6 +7,7 @@
 | Status       | Accepted                                   |
 | Deciders     | System owner                               |
 | Date         | 2025-04-24                                 |
+| Last Reviewed| 2026-05-15                                 |
 | Supersedes   | —                                          |
 | Depends on   | ADR-000, ADR-002, ADR-003                  |
 
@@ -19,13 +20,13 @@ Both ingestion and retrieval require embeddings:
 - During ingestion, document chunks are embedded before being written to the vector store.
 - During query handling, user queries are embedded before retrieval.
 
-The system is expected to run as Docker services that can move between machines on the private Tailscale network. Embedding model choice, version, and deployment location should therefore be centralized rather than duplicated across multiple services.
+The system is expected to run primarily on Kubernetes, with Docker-based local development, and services can move between machines on the private Tailscale network. Embedding model choice, version, and deployment location should therefore be centralized rather than duplicated across multiple services.
 
 ---
 
 ## Decision
 
-The system will include a dedicated **`embedding-service`** Docker service.
+The system will include a dedicated **`embedding-service`** service workload.
 
 Both `api-service` and `ingestion-worker` will call `embedding-service` over an internal HTTP API:
 
@@ -44,7 +45,7 @@ The reference deployment will run `embedding-service` on the same Mac M2 16GB ma
 
 A dedicated embedding service keeps the embedding model and version canonical. It avoids loading the same model independently in both the API and ingestion worker, reduces the risk of model drift, and allows the embedding workload to move to whichever machine has the best CPU/GPU/RAM characteristics.
 
-This service boundary fits the project's Docker-first architecture. It also makes future changes easier: the model can be replaced, optimized, or accelerated inside one service without changing API or ingestion business logic.
+This service boundary fits the project's service-oriented architecture and Kubernetes-first runtime direction. It also makes future changes easier: the model can be replaced, optimized, or accelerated inside one service without changing API or ingestion business logic.
 
 The trade-off is one extra network call in the query path. For a single-user system on a private network, this cost is acceptable, and it is likely to be small compared with local LLM generation latency.
 

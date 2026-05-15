@@ -7,6 +7,7 @@
 | Status       | Accepted                                   |
 | Deciders     | System owner                               |
 | Date         | 2025-04-24                                 |
+| Last Reviewed| 2026-05-15                                 |
 | Supersedes   | —                                          |
 | Depends on   | ADR-000, ADR-001                           |
 
@@ -14,7 +15,7 @@
 
 ## Context
 
-The system is intended to run as a collection of small services packaged as Docker containers. Components may be moved between machines on the owner's Tailscale network. The data layer therefore needs to be central enough that services can be relocated without moving the corpus, while still remaining simple enough for a single-user self-hosted deployment.
+The system is intended to run as a collection of small services, with Kubernetes as the primary runtime deployment target and Docker Compose available for local development. Components may be moved between machines on the owner's Tailscale network. The data layer therefore needs to be central enough that services can be relocated without moving the corpus, while still remaining simple enough for a single-user self-hosted deployment.
 
 The system needs persistent storage for:
 
@@ -30,13 +31,13 @@ ADR-001 establishes that configured watch directories are the authoritative sour
 
 ## Decision
 
-The system will use **PostgreSQL as the central metadata store**, served from the Synology NAS as a Docker-managed service.
+The system will use **PostgreSQL as the central metadata store**, provided as a central service reachable from the cluster (commonly NAS-hosted in the homelab).
 
 PostgreSQL will store document metadata, source path records, SHA-256 content hashes, document lifecycle state, chunk metadata, ingestion job records, and any other relational state required by the ingestion and retrieval pipelines.
 
-The managed document store will live on NAS-backed storage and contain copied source files addressed by stable internal IDs.
+The managed document store will live on durable storage reachable from the cluster and contain copied source files addressed by stable internal IDs.
 
-The vector store will be packaged as an independent Docker service, currently expected to be **Qdrant**. The reference deployment will run Qdrant on the Synology NAS alongside PostgreSQL and the managed document store. Qdrant's location must be configured by service URL rather than assumed by the application, so it can be moved to a compute machine later if NAS RAM, disk latency, or query performance become limiting.
+The vector store will be packaged as an independent service, currently expected to be **Qdrant**. The reference deployment runs Qdrant with durable storage in the Kubernetes stack, while still allowing external placement if needed. Qdrant's location must be configured by service URL rather than assumed by the application, so it can be moved to a compute machine later if NAS RAM, disk latency, or query performance become limiting.
 
 Services must connect to PostgreSQL over the private Tailscale/network boundary using configured connection strings and credentials. Services must not share a SQLite database file over a network filesystem.
 
@@ -54,8 +55,8 @@ This also improves the portfolio value of the project: the architecture demonstr
 
 ## Implications
 
-- A PostgreSQL container/service must be part of the deployment stack.
-- A Qdrant container/service must be part of the deployment stack.
+- A PostgreSQL service reachable from the cluster must be part of the deployment stack (in-cluster or external).
+- A Qdrant service with durable storage must be part of the deployment stack (in-cluster or external).
 - Database schema migrations are required.
 - Service configuration must include PostgreSQL host, port, database, username, password, and TLS/connection settings as needed.
 - Service configuration must include the Qdrant endpoint. The application must not assume Qdrant is co-located with PostgreSQL or the API service.
@@ -91,8 +92,8 @@ Deferred. Running Qdrant close to the retrieval and embedding services may impro
 
 This ADR should be revisited if any of the following occur:
 
-- The NAS proves too slow or unreliable for PostgreSQL.
-- The NAS proves too slow or memory-constrained for Qdrant.
+- The selected PostgreSQL host proves too slow or unreliable.
+- The selected Qdrant placement proves too slow or memory-constrained.
 - The system is simplified back into a single-process deployment.
 - Multiple users or public access are introduced.
 - Backup and recovery requirements become stricter.

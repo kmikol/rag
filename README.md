@@ -2,7 +2,7 @@
 
 Architecture-first personal Retrieval-Augmented Generation system for a single-user, self-hosted knowledge base.
 
-The project is currently in the design/scaffolding phase. The documentation site captures the architecture decisions, service boundaries, and implementation plan.
+The project is implementation-ready, with containerized services, automated checks, and a reusable Helm chart for cluster deployments. The documentation site captures the architecture decisions, service boundaries, and operational contracts.
 
 ## Documentation
 
@@ -42,11 +42,11 @@ Configuration is environment-variable driven. Safe service-specific defaults are
 
 Do not put personal secrets in the committed env defaults; override values in your shell, Compose environment, ignored `.env.local`, or deployment-specific env files.
 
-## Current Architecture Direction
+## Current Deployment Direction
 
-- Dockerized services.
+- Kubernetes (Helm) is the primary deployment mode for homelab/runtime environments.
 - Watch directories are the authoritative corpus source.
-- PostgreSQL metadata store on NAS.
+- Docker Compose is local development/test scaffolding, not the primary runtime deployment path.
 - Qdrant vector store as an independent Docker service, defaulting to NAS placement.
 - `api-service` and `ingestion-worker` split from the start.
 - Dedicated `embedding-service`, co-located with Ollama/Gemma on the Mac M2 model host by default.
@@ -73,7 +73,7 @@ Avoid using `latest` for cluster deployments.
 The reusable Kubernetes chart is published as an OCI Helm chart:
 
 ```text
-oci://ghcr.io/<owner>/charts/rag
+oci://ghcr.io/kmikol/charts/rag
 ```
 
 Release deployments should pin a concrete chart version and matching service
