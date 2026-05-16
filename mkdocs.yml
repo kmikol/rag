@@ -1,0 +1,101 @@
+site_name: Personal RAG System
+site_description: Self-hosted personal Retrieval-Augmented Generation system with Dockerized services, local models, and central NAS-backed storage.
+repo_url: https://github.com/kmikol/rag
+repo_name: kmikol/rag
+site_url: https://kmikol.github.io/rag/
+
+docs_dir: .
+site_dir: ../site
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [".."]
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            docstring_section_style: list
+
+markdown_extensions:
+  - def_list
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - ..
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
+
+extra_css:
+  - stylesheets/architecture.css
+
+validation:
+  nav:
+    omitted_files: ignore
+
+nav:
+  - System Info:
+    - Overview: architecture/index.md
+    - C4 Level 1: architecture/c4-level-1.md
+    - C4 Level 2: architecture/c4-level-2.md
+  - Getting Started:
+    - Setup: getting-started/setup.md
+    - Deploy and Use: getting-started/deployment-guide.md
+    - Homelab Helm Contract: getting-started/homelab-helm-contract.md
+    - Internet Hardening: getting-started/internet-hardening.md
+    - Tailscale Postgres on Synology: getting-started/tailscale-postgres-synology.md
+    - Running: getting-started/running.md
+    - Useful Commands: getting-started/useful-commands.md
+  - Schemas:
+    - Schemas Index: schemas/index.md
+    - API Schemas: schemas/api.md
+    - Event and Record Schemas: schemas/records.md
+  - ADRs:
+    - ADR Index: adr/index.md
+    - 000 Problem Definition and Scope: adr/000-problem-definition-and-scope.md
+    - 001 Data Sources and Ingestion: adr/001-data-sources-and-ingestion.md
+    - 002 Storage and Metadata Topology: adr/002-storage-and-metadata-topology.md
+    - 003 Service Boundaries: adr/003-service-boundaries.md
+    - 004 Embedding Service: adr/004-embedding-service.md
+    - 005 Document Identity and Ingestion State: adr/005-document-identity-and-ingestion-state.md
+    - 006 Chunking Strategy: adr/006-chunking-strategy.md
+    - 007 Retrieval and Answerability: adr/007-retrieval-and-answerability.md
+    - 008 Job Coordination and Service Contracts: adr/008-job-coordination-and-service-contracts.md
+    - 009 Provider-Configurable Model Services: adr/009-provider-configurable-model-services.md
+    - 010 Qdrant-Owned Hybrid Retrieval: adr/010-qdrant-owned-hybrid-retrieval.md
+  - Modules:
+    - Modules Index: modules/index.md
+    - API Service: modules/api-service.md
+    - Ingestion Worker: modules/ingestion-worker.md
+    - Embedding Service: modules/embedding-service.md
+    - Retrieval: modules/retrieval.md
+    - Storage: modules/storage.md

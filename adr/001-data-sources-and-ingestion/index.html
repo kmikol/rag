@@ -1,0 +1,2351 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted personal Retrieval-Augmented Generation system with Dockerized services, local models, and central NAS-backed storage.">
+      
+      
+      
+        <link rel="canonical" href="https://kmikol.github.io/rag/adr/001-data-sources-and-ingestion/">
+      
+      
+        <link rel="prev" href="../000-problem-definition-and-scope/">
+      
+      
+        <link rel="next" href="../002-storage-and-metadata-topology/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>001 Data Sources and Ingestion - Personal RAG System</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/architecture.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#adr-001-data-sources-and-ingestion" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Personal RAG System" class="md-header__button md-logo" aria-label="Personal RAG System" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Personal RAG System
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              001 Data Sources and Ingestion
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kmikol/rag" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kmikol/rag
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+  System Info
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/setup/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../schemas/" class="md-tabs__link">
+          
+  
+  
+  Schemas
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  ADRs
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../modules/" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Personal RAG System" class="md-nav__button md-logo" aria-label="Personal RAG System" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Personal RAG System
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kmikol/rag" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kmikol/rag
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Info
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    System Info
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/c4-level-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C4 Level 1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/c4-level-2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C4 Level 2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/deployment-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy and Use
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/homelab-helm-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Homelab Helm Contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/internet-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internet Hardening
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/tailscale-postgres-synology/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tailscale Postgres on Synology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/running/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/useful-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Useful Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schemas
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Schemas
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schemas Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schemas/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schemas/records/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event and Record Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADRs
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ADRs
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../000-problem-definition-and-scope/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    000 Problem Definition and Scope
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    001 Data Sources and Ingestion
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    001 Data Sources and Ingestion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-supported-file-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Supported File Formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-document-inclusion-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Document Inclusion Criteria
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-ingestion-trigger-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Ingestion Trigger Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-raw-document-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Raw Document Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Duplicate Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-document-update-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Document Update Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-deletion-propagation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Deletion Propagation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-language-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Language Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-source-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Source Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives Considered
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Alternatives Considered">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-system-watcher-inotify-fsevents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-system watcher (inotify / FSEvents)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-only-document-storage-no-copy-of-originals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference-only document storage (no copy of originals)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-based-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path-based duplicate detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#differential-re-ingestion-on-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differential re-ingestion on update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#soft-delete-with-recovery-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soft-delete with recovery window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Triggers
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../002-storage-and-metadata-topology/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    002 Storage and Metadata Topology
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../003-service-boundaries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    003 Service Boundaries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../004-embedding-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    004 Embedding Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../005-document-identity-and-ingestion-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    005 Document Identity and Ingestion State
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../006-chunking-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    006 Chunking Strategy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../007-retrieval-and-answerability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    007 Retrieval and Answerability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../008-job-coordination-and-service-contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    008 Job Coordination and Service Contracts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../009-provider-configurable-model-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    009 Provider-Configurable Model Services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../010-qdrant-owned-hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    010 Qdrant-Owned Hybrid Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/api-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ingestion-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ingestion Worker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/embedding-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-supported-file-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Supported File Formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-document-inclusion-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Document Inclusion Criteria
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-ingestion-trigger-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Ingestion Trigger Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-raw-document-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Raw Document Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Duplicate Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-document-update-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Document Update Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-deletion-propagation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Deletion Propagation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-language-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Language Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-source-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Source Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives Considered
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Alternatives Considered">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-system-watcher-inotify-fsevents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-system watcher (inotify / FSEvents)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reference-only-document-storage-no-copy-of-originals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference-only document storage (no copy of originals)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-based-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path-based duplicate detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#differential-re-ingestion-on-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differential re-ingestion on update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#soft-delete-with-recovery-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soft-delete with recovery window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Triggers
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="adr-001-data-sources-and-ingestion">ADR-001: Data Sources and Ingestion</h1>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ID</td>
+<td>ADR-001</td>
+</tr>
+<tr>
+<td>Title</td>
+<td>Data Sources and Ingestion</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td>Deciders</td>
+<td>System owner</td>
+</tr>
+<tr>
+<td>Date</td>
+<td>2025-04-24</td>
+</tr>
+<tr>
+<td>Supersedes</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Depends on</td>
+<td>ADR-000 (Problem Definition and Scope), ADR-002 (Storage and Metadata Topology)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="context">Context</h2>
+<p>This ADR defines how documents enter the RAG system — what formats are accepted, where they come from, how ingestion is triggered, how the system maintains consistency between the source file store and the index, and how the document lifecycle (add, update, delete) is managed.</p>
+<p>The system is single-user and self-hosted (ADR-000). All data sources are local files on devices controlled by the owner. There are no external APIs, databases, or third-party content streams to integrate with at this stage. The architecture must nonetheless be structured so that new source types and file formats can be added without restructuring the pipeline.</p>
+<hr />
+<h2 id="decisions">Decisions</h2>
+<h3 id="1-supported-file-formats">1. Supported File Formats</h3>
+<p><strong>Decision:</strong> The initial supported formats are <strong>PDF</strong> and <strong>Markdown</strong>. The ingestion pipeline must be designed as a format-dispatch architecture so that additional formats can be added by implementing a new parser without modifying existing pipeline logic.</p>
+<p><strong>Rationale:</strong> PDF and Markdown cover the dominant formats in a personal knowledge corpus — research papers, documentation, notes, exported content, and written artefacts. Markdown in particular is the native format of most personal knowledge management tools (Obsidian, Logseq, etc.).</p>
+<p>Extensibility is a first-class requirement because the owner may later want to add DOCX, HTML, EPUB, plain text, or code files. The right pattern is a <strong>format registry</strong>: a map from file extension (and optionally MIME type) to a parser implementation. Each parser is responsible for extracting clean text and basic structural metadata from its format. The rest of the pipeline is format-agnostic and operates on the normalised output.</p>
+<p><strong>Implications:</strong>
+- A <code>BaseDocumentParser</code> interface or abstract class must be defined. PDF and Markdown parsers implement it.
+- File format detection should use both file extension and MIME type sniffing (extension alone is unreliable).
+- Adding a new format requires: implementing the parser, registering it, and adding any new dependencies. No existing code changes.
+- Unsupported formats encountered during a scan must be logged and skipped gracefully, not cause pipeline failure.
+- PDF parsing must handle both native text-layer PDFs and scanned image PDFs differently. Scanned PDFs without a text layer will return empty content — this must be detected and flagged. OCR integration is deferred but the parser interface must not preclude it.</p>
+<hr />
+<h3 id="2-document-inclusion-criteria">2. Document Inclusion Criteria</h3>
+<p><strong>Decision:</strong> <strong>Any document placed in the configured watch directory (or directory tree) is eligible for ingestion.</strong> Inclusion is determined solely by presence — no tagging, flagging, or explicit opt-in is required per document. Documents in subdirectories are included recursively.</p>
+<p>The watch root(s) are defined in system configuration and may point to one or more directories across the Tailscale network.</p>
+<p><strong>Rationale:</strong> An explicit opt-in mechanism (e.g., tagging files, maintaining an include list) introduces friction and is easy to forget. For a personal system where the owner controls what goes in the directory, presence is a sufficient and intuitive proxy for intent. If a document should not be indexed, it should not be in the watch directory.</p>
+<p><strong>Implications:</strong>
+- Watch paths are a required configuration value. The system must refuse to start without at least one valid configured path.
+- Recursive directory traversal must be implemented. Directory depth should not be artificially limited.
+- Hidden files and directories (dot-prefixed) should be skipped by default, with a configuration option to include them.
+- Symlinks should be followed, with cycle detection to prevent infinite traversal.
+- Files with unsupported extensions are silently skipped with a log entry. They do not cause errors.</p>
+<hr />
+<h3 id="3-ingestion-trigger-mechanism">3. Ingestion Trigger Mechanism</h3>
+<p><strong>Decision:</strong> Two complementary ingestion trigger mechanisms will be implemented:</p>
+<p><strong>Primary — On-demand ingestion via API:</strong>
+A <code>POST /ingest</code> endpoint triggers an immediate ingestion run. The caller may optionally specify a single file path to ingest only that document, or omit it to run a full scan of all watch directories. The endpoint returns immediately with a job ID; ingestion runs asynchronously and status is queryable via <code>GET /ingest/{job_id}</code>.</p>
+<p><strong>Secondary — Scheduled nightly job:</strong>
+A background scheduler runs a full ingestion scan once per night at a configurable time (default: 02:00 local time). This serves as a fallback to catch documents that were added without an explicit on-demand trigger, and as a reconciliation mechanism for deletions (see Decision 6).</p>
+<p>No file-system watcher (inotify, FSEvents, etc.) will be implemented in this iteration.</p>
+<p><strong>Rationale:</strong> On-demand ingestion gives the owner deliberate, immediate control — a document can be added and queried within seconds of triggering. The nightly job provides a safety net without requiring the owner to remember to trigger ingestion after every addition.</p>
+<p>A file-system watcher was considered but rejected. Watchers are platform-specific, add a persistent background process with non-trivial failure modes, and require handling edge cases (rapid successive writes, partial writes, file locks). For a personal system where ingestion lag of up to 24 hours is acceptable as a fallback, the watcher's complexity is not justified.</p>
+<p>The asynchronous job pattern for the API endpoint is important: ingesting a large document or a full directory scan may take tens of seconds to minutes. A synchronous HTTP response would time out or require the caller to hold a long connection open. The job/status pattern is clean, easy to implement, and easy to demonstrate.</p>
+<p><strong>Implications:</strong>
+- An async job queue is required. A simple in-process queue (e.g., Python <code>asyncio.Queue</code> or a lightweight task runner) is sufficient. A full external queue (Redis, Celery) is over-engineering for single-user volume.
+- The scheduler must be embedded in the application process or run as a companion cron job. A cron entry calling <code>POST /ingest</code> is the simplest approach and avoids a persistent scheduler dependency.
+- The nightly run time must be configurable via environment variable.
+- Ingestion job status (running, completed, failed, items processed, errors) must be persisted in the metadata store so the owner can inspect what happened across service restarts.
+- The <code>POST /ingest</code> endpoint is subject to API key authentication (ADR-000).</p>
+<hr />
+<h3 id="4-raw-document-storage">4. Raw Document Storage</h3>
+<p><strong>Decision:</strong> The configured watch directories are the authoritative source of the corpus. The original source document will be <strong>copied into a managed document store</strong> at ingestion time, but this managed copy is an internal preservation and reprocessing artefact, not the definition of corpus membership.</p>
+<p><strong>Rationale:</strong> For a personal file-based knowledge system, the simplest and most intuitive ownership model is: if a supported document is present in a configured watch directory, it belongs in the corpus; if it is removed from all configured watch directories, it no longer belongs in the corpus. This keeps corpus management aligned with the owner's normal filesystem workflow.</p>
+<p>Storing a managed copy of the original still enables two important capabilities:
+- <strong>Re-processing:</strong> If the chunking strategy or embedding model changes, documents can be re-processed from the stored original without the owner needing to re-import anything.
+- <strong>Auditing:</strong> The exact content that was indexed is preserved, which matters when generated answers cite a document.</p>
+<p>The managed copy does not override the watch directory's authority. If the source file is removed from the watch directory, the corresponding managed copy, chunks, embeddings, and metadata are removed during deletion reconciliation, subject to the safety checks defined in Decision 7.</p>
+<p><strong>Implications:</strong>
+- A managed document store directory must be defined in configuration (e.g., <code>~/.rag/documents/</code> or a configurable path).
+- Documents are stored with a stable internal ID as their filename (UUID or content-hash-based). Original filename and path are stored as metadata.
+- The document store must be included in any backup strategy the owner maintains.
+- The managed store, metadata store, and vector index must remain consistent — an active document must have a source file under a healthy watch root, a managed copy, metadata, and corresponding chunks in the index. The nightly reconciliation job enforces this.</p>
+<hr />
+<h3 id="5-duplicate-detection">5. Duplicate Detection</h3>
+<p><strong>Decision:</strong> Duplicate detection will use <strong>SHA-256 content hashing</strong>. At ingestion time, the hash of the incoming file is computed and compared against hashes of all previously ingested documents. If a match exists, the file is treated as a duplicate and ingestion is skipped.</p>
+<p><strong>Rationale:</strong> Path-based identity is unreliable — the same document can exist at multiple paths, or a file can be moved and re-discovered. Content hashing is path-agnostic and correctly identifies duplicates regardless of filename or location. SHA-256 is collision-resistant at practical scales and fast enough that hashing even large documents is not a meaningful bottleneck.</p>
+<p><strong>Implications:</strong>
+- SHA-256 hashes of all ingested documents must be stored in the document metadata store defined in ADR-002.
+- At ingestion, the file is hashed before any other processing. Hash lookup is the first gate — if the document is already present with this hash, processing stops immediately.
+- The hash is also used to detect updates: if a document at a previously-ingested path has a different hash, it has been modified and must be re-ingested (see Decision 6).
+- Hash computation must occur on the raw file bytes before any normalisation or cleaning.</p>
+<hr />
+<h3 id="6-document-update-handling">6. Document Update Handling</h3>
+<p><strong>Decision:</strong> When a previously-ingested document is modified (detected by hash change on a path that maps to an existing document), the system will <strong>delete all existing chunks and embeddings for that document and re-ingest it from scratch</strong>.</p>
+<p><strong>Rationale:</strong> Differential re-ingestion (detecting which sections changed and only updating those chunks) is significantly more complex to implement correctly and provides marginal benefit at personal document volumes. The brief period during which a document is being re-processed — where it has been removed from the index but not yet re-added — is acceptable for a personal system. If this gap becomes a concern in future, it can be mitigated by a shadow-index swap pattern, but this is not warranted now.</p>
+<p><strong>Implications:</strong>
+- Re-ingestion is triggered by: a hash mismatch on a known path (detected during on-demand or nightly scan), or an explicit <code>POST /ingest</code> call for a specific file that is already in the index.
+- The delete-then-ingest sequence must be atomic at the document level: all old chunks are removed before new chunks are written. Partial states (some old, some new chunks) must not persist if the re-ingestion fails midway.
+- Re-ingestion failures must be logged with enough detail to diagnose. The document should be flagged as in an error state in the metadata store, not silently left half-processed.
+- The document's internal ID is preserved across re-ingestion; only the chunks, embeddings, and hash are replaced.</p>
+<hr />
+<h3 id="7-deletion-propagation">7. Deletion Propagation</h3>
+<p><strong>Decision:</strong> When a source document is removed from the watch directory, it must be removed from the index. Two mechanisms work together:</p>
+<p><strong>Event-triggered deletion (primary):</strong>
+A <code>DELETE /documents/{id}</code> API endpoint removes a document immediately — deleting its entry from the metadata store, its chunks from the vector index, and its copy from the managed document store.</p>
+<p><strong>Nightly reconciliation scan (secondary):</strong>
+As part of the scheduled nightly job, the system will scan all documents in the metadata store and verify that their source file still exists in the watch directory. Any document whose source file is no longer present will be automatically removed from the index. This catches deletions that occurred without an explicit API call.</p>
+<p><strong>Rationale:</strong> Given the "no answer &gt; wrong answer" principle established in ADR-000, stale documents in the index are a real correctness risk — they can produce answers that cite sources which no longer exist or have been superseded. Deletion must propagate reliably.</p>
+<p>The nightly reconciliation scan elegantly serves double duty: it handles both new document discovery and stale document removal in a single pass. This is simpler than running two separate jobs.</p>
+<p><strong>Implications:</strong>
+- The reconciliation scan must compare the set of files currently present in the watch directories against the set of documents in the metadata store, and resolve any discrepancies (missing files → delete from index; new files → ingest).
+- Deletion reconciliation must only run for a watch root after the system has confirmed that the root itself is reachable and healthy. If a watch root is missing, inaccessible, or fails abnormally during scanning, deletion reconciliation for that root is skipped and the failure is logged.
+- Documents may track <code>last_seen_at</code> and <code>missing_since</code> timestamps so the system can apply a configurable grace period before automatic deletion if this proves useful in practice.
+- The <code>DELETE /documents/{id}</code> endpoint requires the internal document ID. A <code>GET /documents</code> endpoint listing ingested documents with their IDs is a necessary companion.
+- Deletion from the vector index must remove all chunks associated with the document, not just the metadata record. The metadata store must maintain the mapping from document ID to chunk IDs.
+- Deletion is permanent and immediate. There is no soft-delete or recycle bin in this iteration.</p>
+<hr />
+<h3 id="8-language-support">8. Language Support</h3>
+<p><strong>Decision:</strong> The system will support <strong>English-language documents only</strong> in this iteration.</p>
+<p><strong>Rationale:</strong> The owner's corpus is English-only. Supporting multilingual content requires selecting a multilingual embedding model, which typically has different dimensionality characteristics, may perform less well on English-only workloads, and introduces additional complexity in language detection and potentially in chunking (some languages do not use whitespace as a token boundary). None of this complexity is justified for the current use case.</p>
+<p><strong>Implications:</strong>
+- Embedding model selection (addressed in a later ADR) may assume English-optimised models.
+- No language detection step is required in the pre-processing pipeline.
+- If multilingual support is added in future, the embedding model will likely need to change, requiring a full re-embedding of the corpus. This is an acceptable future cost.</p>
+<hr />
+<h3 id="9-source-authentication">9. Source Authentication</h3>
+<p><strong>Decision:</strong> No source authentication mechanism is required. All source documents are local files on filesystems accessible to the system process or reachable via the Tailscale network. Standard operating system file permissions are the access control mechanism for source files.</p>
+<p><strong>Rationale:</strong> The system has no external data sources requiring API keys, OAuth tokens, or credentials. If remote paths on the Tailscale network are included in watch directories, they must be mounted or accessible via standard network filesystem protocols (NFS, SMB, SSHFS) at the OS level before the application sees them. Credential management for remote mounts is an infrastructure concern, not an application concern.</p>
+<hr />
+<h2 id="consequences">Consequences</h2>
+<p>The decisions in this ADR establish the following constraints for downstream ADRs:</p>
+<table>
+<thead>
+<tr>
+<th>Constraint</th>
+<th>Effect on downstream decisions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PDF + Markdown formats, extensible</td>
+<td>Pre-processing ADR must define parser interface and format-specific cleaning steps</td>
+</tr>
+<tr>
+<td>Watch directories are authoritative; raw documents stored in managed store</td>
+<td>Storage ADR must account for source roots, managed document copies, and vector index consistency</td>
+</tr>
+<tr>
+<td>On-demand + nightly ingestion</td>
+<td>Infrastructure ADR must account for a scheduler (cron or embedded)</td>
+</tr>
+<tr>
+<td>Async ingestion jobs</td>
+<td>API design must include job status endpoints</td>
+</tr>
+<tr>
+<td>Content hashing</td>
+<td>Metadata store must persist hashes; ingestion pipeline must compute hash as first step</td>
+</tr>
+<tr>
+<td>Delete-and-re-ingest for updates</td>
+<td>Vector store must support bulk delete by document ID</td>
+</tr>
+<tr>
+<td>Nightly reconciliation for deletion</td>
+<td>Nightly job has two responsibilities: discover new, prune deleted</td>
+</tr>
+<tr>
+<td>English only</td>
+<td>Embedding model selection unconstrained by multilingual requirements</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="alternatives-considered">Alternatives Considered</h2>
+<h3 id="file-system-watcher-inotify-fsevents">File-system watcher (inotify / FSEvents)</h3>
+<p>Would provide near-instant ingestion of new files without any manual trigger. Rejected due to platform-specificity, additional persistent process complexity, and edge cases around partial writes and file locks. The on-demand API plus nightly fallback achieves the owner's needs with far simpler implementation.</p>
+<h3 id="reference-only-document-storage-no-copy-of-originals">Reference-only document storage (no copy of originals)</h3>
+<p>Simpler, uses less disk space. Rejected because it creates fragility around file moves and makes re-processing impossible without re-import. For text documents, the disk cost of storing originals is negligible.</p>
+<h3 id="path-based-duplicate-detection">Path-based duplicate detection</h3>
+<p>Simpler than hashing. Rejected because it fails on renamed or moved files, and cannot detect when the same content is imported from multiple locations.</p>
+<h3 id="differential-re-ingestion-on-update">Differential re-ingestion on update</h3>
+<p>Would minimise re-processing work and eliminate the brief indexing gap during updates. Rejected because the implementation complexity is not justified at personal document volumes. Full delete-and-re-ingest is correct and straightforward.</p>
+<h3 id="soft-delete-with-recovery-window">Soft-delete with recovery window</h3>
+<p>Would allow accidentally deleted documents to be recovered. Rejected for this iteration — the owner can re-ingest from source if needed, and the managed document store retains the original file until deletion is confirmed.</p>
+<hr />
+<h2 id="review-triggers">Review Triggers</h2>
+<p>This ADR should be revisited if any of the following occur:</p>
+<ul>
+<li>New source types are required (web scraping, database export, API integration).</li>
+<li>Non-English documents are added to the corpus.</li>
+<li>Document volume grows to a point where nightly full-scan reconciliation is too slow.</li>
+<li>The owner's workflow reveals that 24-hour ingestion lag for the fallback path is not acceptable.</li>
+<li>Scanned PDFs with no text layer become a significant part of the corpus (triggers OCR decision).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+        <script src="../../javascripts/mermaid-init.js"></script>
+      
+    
+  </body>
+</html>
