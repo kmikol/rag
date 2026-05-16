@@ -71,6 +71,10 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
         api_env["LLM_ENDPOINT_URL"]["value"] == "https://generativelanguage.googleapis.com/v1beta"
     )
     assert api_env["LLM_MODEL"]["value"] == "gemini-3.1-flash-lite"
+    assert api_env["EMBEDDING_BACKEND"]["value"] == "google"
+    assert api_env["EMBEDDING_MODEL_NAME"]["value"] == "gemini-embedding-2"
+    assert api_env["EMBEDDING_DIMENSION"]["value"] == "768"
+    assert "EMBEDDING_API_KEY" not in api_env
     assert api_env["WATCH_ROOTS"]["value"] == "/data/watch"
     assert api_env["DOCUMENT_STORE_PATH"]["value"] == "/data/documents"
     assert _volume_mounts_by_name(api_container)["shared-storage"]["mountPath"] == "/data"
@@ -80,6 +84,8 @@ def test_cluster_home_arpa_values_render_homelab_contract() -> None:
     worker_env = _env_by_name(worker_container)
     assert worker_env["WATCH_ROOTS"]["value"] == "/data/watch"
     assert worker_env["DOCUMENT_STORE_PATH"]["value"] == "/data/documents"
+    assert worker_env["EMBEDDING_MODEL_NAME"]["value"] == "gemini-embedding-2"
+    assert "EMBEDDING_API_KEY" not in worker_env
     assert _volume_mounts_by_name(worker_container)["shared-storage"]["mountPath"] == "/data"
 
     embedding = _find_by_kind_name(docs, "Deployment", "rag-rag-embedding-service")

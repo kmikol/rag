@@ -28,8 +28,11 @@ spec:
           imagePullPolicy: {{ .Values.embeddingService.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.embeddingService.containerPort }}
-          {{- if or .Values.embeddingService.env .Values.embeddingService.extraEnv }}
           env:
+            {{- if .Values.embeddingService.useEmbeddingConfig }}
+            {{- include "rag.embeddingSettingsEnv" . | nindent 12 }}
+            {{- include "rag.embeddingSecretEnv" . | nindent 12 }}
+            {{- end }}
             {{- range $key, $value := .Values.embeddingService.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -37,7 +40,6 @@ spec:
             {{- with .Values.embeddingService.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- end }}
           {{- with .Values.embeddingService.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

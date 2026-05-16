@@ -26,7 +26,29 @@ postgresql:
       cpu: "1"
       memory: 1Gi
 
+embedding:
+  backend: google
+  modelName: gemini-embedding-2
+  dimension: 768
+  endpointUrl: https://generativelanguage.googleapis.com/v1beta
+  timeoutSeconds: 60
+  keepAlive: 5m
+  apiKey:
+    existingSecret: rag-embedding-credentials
+    secretKey: EMBEDDING_API_KEY
+
+llm:
+  provider: google_genai
+  endpointUrl: https://generativelanguage.googleapis.com/v1beta
+  model: gemini-3.1-flash-lite
+  timeoutSeconds: 180
+  apiKey:
+    existingSecret: rag-llm-credentials
+    secretKey: LLM_API_KEY
+
 apiService:
+  useEmbeddingConfig: true
+  useLlmConfig: true
   apiKey:
     existingSecret: rag-api-credentials
     secretKey: RAG_API_KEY
@@ -34,20 +56,10 @@ apiService:
     QDRANT_COLLECTION: rag_chunks
     WATCH_ROOTS: /data/watch
     DOCUMENT_STORE_PATH: /data/documents
-    LLM_PROVIDER: google_genai
-    LLM_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
-    LLM_MODEL: gemini-3.1-flash-lite
-    LLM_TIMEOUT_SECONDS: "180"
     CHAT_MIN_TOP_SCORE: "0.5"
     CHAT_MIN_USABLE_CHUNKS: "1"
     CHAT_MAX_CONTEXT_CHUNKS: "5"
     CHAT_MAX_CHUNK_CHARS: "2000"
-  extraEnv:
-    - name: LLM_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: rag-llm-credentials
-          key: LLM_API_KEY
   ingress:
     enabled: true
     className: traefik
@@ -69,6 +81,7 @@ apiService:
       memory: 1Gi
 
 ingestionWorker:
+  useEmbeddingConfig: true
   env:
     QDRANT_COLLECTION: rag_chunks
     WATCH_ROOTS: /data/watch
@@ -85,19 +98,7 @@ ingestionWorker:
       memory: 1Gi
 
 embeddingService:
-  env:
-    EMBEDDING_BACKEND: google
-    EMBEDDING_MODEL_NAME: gemini-embedding-2
-    EMBEDDING_DIMENSION: "768"
-    EMBEDDING_ENDPOINT_URL: https://generativelanguage.googleapis.com/v1beta
-    EMBEDDING_TIMEOUT_SECONDS: "60"
-    EMBEDDING_KEEP_ALIVE: 5m
-  extraEnv:
-    - name: EMBEDDING_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: rag-embedding-credentials
-          key: EMBEDDING_API_KEY
+  useEmbeddingConfig: true
   resources:
     requests:
       cpu: 100m

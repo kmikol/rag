@@ -22,10 +22,16 @@ Set these values for a production-like deployment:
 | `apiService.env.DOCUMENT_STORE_PATH` | Managed document-copy path as seen by the API container. |
 | `ingestionWorker.env.WATCH_ROOTS` | Source corpus path list as seen by the worker container. |
 | `ingestionWorker.env.DOCUMENT_STORE_PATH` | Managed document-copy path as seen by the worker container. |
-| `embeddingService.env.EMBEDDING_BACKEND` | Embedding backend, for example `ollama` or `google`. |
-| `embeddingService.env.EMBEDDING_MODEL_NAME` | Embedding model name. |
-| `embeddingService.env.EMBEDDING_DIMENSION` | Embedding vector dimension. |
-| `embeddingService.env.EMBEDDING_ENDPOINT_URL` | External embedding/model endpoint used by the embedding service. |
+| `embedding.backend` | Embedding backend, for example `ollama` or `google`. |
+| `embedding.modelName` | Embedding model name. |
+| `embedding.dimension` | Embedding vector dimension. |
+| `embedding.endpointUrl` | External embedding/model endpoint used by the embedding service. |
+| `llm.provider` | Chat LLM provider used by the API service. |
+| `llm.model` | Chat LLM model used by the API service. |
+| `apiService.useEmbeddingConfig` | Render chart-level `embedding.*` settings into the API service. |
+| `apiService.useLlmConfig` | Render chart-level `llm.*` settings into the API service. |
+| `ingestionWorker.useEmbeddingConfig` | Render chart-level `embedding.*` settings into the ingestion worker and cron job. |
+| `embeddingService.useEmbeddingConfig` | Render chart-level `embedding.*` settings and optional embedding API key into the embedding service. |
 | `qdrant.persistence` | Durable vector-store storage configuration. |
 
 The chart builds `POSTGRES_URL` for `api-service` and `ingestion-worker` from
@@ -33,7 +39,10 @@ The chart builds `POSTGRES_URL` for `api-service` and `ingestion-worker` from
 host resolves to the chart-owned PostgreSQL Service. Otherwise, `database.host`
 must point at an external PostgreSQL service reachable from the cluster. The
 chart also sets in-cluster `QDRANT_URL` and `EMBEDDING_SERVICE_URL` values for
-the API and worker.
+the API and worker. Chart-level `embedding` and `llm` blocks are the single
+source of truth for model/provider settings. Each workload explicitly opts into
+the shared blocks with `useEmbeddingConfig` or `useLlmConfig`, so values files
+remain readable while repeated model names and endpoints stay centralized.
 
 ## Secrets
 
@@ -97,9 +106,9 @@ Deployment repositories must provide:
 - PostgreSQL reachable from the cluster, or set `postgresql.enabled=true` for a
   chart-owned PostgreSQL instance.
 - Any required database schema migration process before serving real traffic.
-- Embedding endpoint placement, for example an in-cluster Ollama service or a
-  private LAN/Tailnet endpoint.
-- Chat-completion endpoint placement through `apiService.env.LLM_*` values.
+- Embedding endpoint placement through `embedding.*` values, for example an
+  in-cluster Ollama service, Google Gemini, or a private LAN/Tailnet endpoint.
+- Chat-completion endpoint placement through `llm.*` values.
 - Backup policy for PostgreSQL, Qdrant, source corpus, and managed documents.
 
 Changing `EMBEDDING_MODEL_NAME`, `EMBEDDING_DIMENSION`, or the embedding backend
@@ -135,23 +144,23 @@ refuses to push if that chart version already exists in GHCR.
 Pull the packaged chart:
 
 ```bash
-helm pull oci://ghcr.io/kmikol/charts/rag --version 0.1.0
+helm pull oci://ghcr.io/kmikol/charts/rag --version 0.1.1
 ```
 
 Install directly from GHCR:
 
 ```bash
 helm install rag oci://ghcr.io/kmikol/charts/rag \
-  --version 0.1.0 \
+  --version 0.1.1 \
   -f values.yaml
 ```
 
 For Argo CD, use the repository and chart name separately:
 
 ```yaml
-repoURL: oci://ghcr.io/kmikol/charts
+repoURL: ghcr.io/kmikol/charts
 chart: rag
-targetRevision: 0.1.0
+targetRevision: 0.1.1
 ```
 
 If the cluster must pull the chart without GHCR credentials, make the

@@ -20,7 +20,7 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:v1.12.4
+    image: qdrant/qdrant:v1.13.2
 
   embedding-service:
     build:

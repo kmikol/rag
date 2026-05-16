@@ -52,6 +52,12 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.apiService.apiKey.secretKey }}
             {{- end }}
+            {{- if .Values.apiService.useEmbeddingConfig }}
+            {{- include "rag.embeddingSettingsEnv" . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.apiService.useLlmConfig }}
+            {{- include "rag.llmEnv" . | nindent 12 }}
+            {{- end }}
             {{- range $key, $value := .Values.apiService.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}

@@ -50,6 +50,9 @@ spec:
                   value: "http://{{ include "rag.fullname" . }}-qdrant:{{ .Values.qdrant.service.port }}"
                 - name: EMBEDDING_SERVICE_URL
                   value: "http://{{ include "rag.fullname" . }}-embedding-service:{{ .Values.embeddingService.service.port }}"
+                {{- if .Values.ingestionWorker.useEmbeddingConfig }}
+                {{- include "rag.embeddingSettingsEnv" . | nindent 16 }}
+                {{- end }}
                 {{- range $key, $value := .Values.ingestionWorker.env }}
                 - name: {{ $key }}
                   value: {{ $value | quote }}
