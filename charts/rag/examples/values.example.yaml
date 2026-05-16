@@ -7,7 +7,15 @@ database:
 postgresql:
   enabled: false
 
+embedding:
+  backend: ollama
+  modelName: embeddinggemma
+  dimension: 768
+  endpointUrl: http://ollama.default.svc.cluster.local:11434
+
 apiService:
+  useEmbeddingConfig: true
+  useLlmConfig: true
   apiKey:
     existingSecret: rag-api-credentials
     secretKey: RAG_API_KEY
@@ -20,6 +28,7 @@ apiService:
             pathType: Prefix
 
 ingestionWorker:
+  useEmbeddingConfig: true
   env:
     WATCH_ROOTS: /data/watch
   cronJob:
@@ -27,11 +36,8 @@ ingestionWorker:
     schedule: "0 * * * *"
 
 embeddingService:
-  env:
-    EMBEDDING_BACKEND: ollama
-    EMBEDDING_MODEL_NAME: embeddinggemma
-    EMBEDDING_DIMENSION: "768"
-    EMBEDDING_ENDPOINT_URL: http://ollama.default.svc.cluster.local:11434
+  useEmbeddingConfig: true
+  resources: {}
 
 qdrant:
   persistence:

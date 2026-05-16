@@ -28,10 +28,16 @@ The cluster values must provide:
 - `apiService.apiKey.existingSecret` pointing at `rag-api-credentials`.
 - `apiService.env.WATCH_ROOTS` and `apiService.env.DOCUMENT_STORE_PATH`.
 - `ingestionWorker.env.WATCH_ROOTS` and `ingestionWorker.env.DOCUMENT_STORE_PATH`.
-- `embeddingService.env.EMBEDDING_BACKEND`.
-- `embeddingService.env.EMBEDDING_MODEL_NAME`.
-- `embeddingService.env.EMBEDDING_DIMENSION`.
-- `embeddingService.env.EMBEDDING_ENDPOINT_URL`.
+- `embedding.backend`.
+- `embedding.modelName`.
+- `embedding.dimension`.
+- `embedding.endpointUrl`.
+- `llm.provider`.
+- `llm.model`.
+- `apiService.useEmbeddingConfig`.
+- `apiService.useLlmConfig`.
+- `ingestionWorker.useEmbeddingConfig`.
+- `embeddingService.useEmbeddingConfig`.
 - Durable `qdrant.persistence` configuration.
 
 ## Storage

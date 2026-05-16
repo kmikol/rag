@@ -141,12 +141,12 @@ def test_rag_pipeline_end_to_end() -> None:
     # to PostgreSQL, stores a managed copy, and upserts vectors to Qdrant.
     worker_result = run_next_job(worker_id="e2e-worker")
 
-    assert worker_result.status == "active"
+    assert worker_result.status == "active", worker_result.error_message
     assert worker_result.processed_items == 1
 
     second_worker_result = run_next_job(worker_id="e2e-worker")
 
-    assert second_worker_result.status == "active"
+    assert second_worker_result.status == "active", second_worker_result.error_message
     assert second_worker_result.processed_items == 1
 
     # ---------------------------------------------------------------------
